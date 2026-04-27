@@ -126,7 +126,8 @@ class PplApi implements CarrierInterface
             if ($httpCode === 503) { throw new ShippingException('PPL: Service Unavailable'); }
             throw new ShippingException('PPL: Incorrect response HTTP Code: ' . $httpCode);
         } catch (RequestException $e) {
-            throw new ShippingException('PPL Guzzle error: ' . $e->getMessage());
+            $responseBody = $e->hasResponse() ? (string) $e->getResponse()->getBody() : '';
+            throw new ShippingException('PPL createBatch HTTP ' . ($e->hasResponse() ? $e->getResponse()->getStatusCode() : '?') . ': ' . $e->getMessage() . ' | body: ' . $responseBody);
         }
     }
 
@@ -141,7 +142,8 @@ class PplApi implements CarrierInterface
             ]);
             return $response->getBody()->getContents();
         } catch (ClientException $exception) {
-            throw new ShippingException('PPL Response error HTTP Code: ' . $exception->getResponse()->getStatusCode());
+            $body = (string) $exception->getResponse()->getBody();
+            throw new ShippingException('PPL getLabel HTTP ' . $exception->getResponse()->getStatusCode() . ': ' . $body);
         }
     }
 
@@ -161,7 +163,8 @@ class PplApi implements CarrierInterface
             }
             return null;
         } catch (ClientException $exception) {
-            throw new ShippingException('PPL Response error HTTP Code: ' . $exception->getResponse()->getStatusCode());
+            $body = (string) $exception->getResponse()->getBody();
+            throw new ShippingException('PPL getStatus HTTP ' . $exception->getResponse()->getStatusCode() . ': ' . $body);
         }
     }
 

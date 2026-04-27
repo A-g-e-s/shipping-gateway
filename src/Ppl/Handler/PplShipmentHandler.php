@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Ages\ShippingGateway\Ppl\Handler;
 
+use Ages\ShippingGateway\Common\Carrier;
 use Ages\ShippingGateway\Common\ShipmentHandlerInterface;
 use Ages\ShippingGateway\Common\Shipment\ShipmentLabel;
 use Ages\ShippingGateway\Common\Shipment\ShipmentRequest;
@@ -16,9 +17,9 @@ use Ages\ShippingGateway\Ppl\PplApi;
 
 class PplShipmentHandler extends PplApi implements ShipmentHandlerInterface
 {
-    public function getCarrierCode(): string
+    public function getCarrier(): Carrier
     {
-        return 'PPL';
+        return Carrier::Ppl;
     }
 
     public function createShipment(ShipmentRequest $request): array
@@ -45,7 +46,7 @@ class PplShipmentHandler extends PplApi implements ShipmentHandlerInterface
             $status = $this->waitForBatch($batchId);
 
             [$trackingNumber, $labelPdf] = $this->extractFromStatus($status, $ref);
-            $labels[] = new ShipmentLabel('PPL', $trackingNumber, $labelPdf);
+            $labels[] = new ShipmentLabel(Carrier::Ppl, $trackingNumber, $labelPdf);
         }
 
         return $labels;
@@ -70,7 +71,7 @@ class PplShipmentHandler extends PplApi implements ShipmentHandlerInterface
     {
         $trackingNumber = $status->items[0]->shipmentNumber ?? $fallbackRef;
 
-        $labelUrl = $status->completeLabel->labelUrls[0] ?? null;
+        $labelUrl = $status->completeLabel?->labelUrls[0] ?? null;
         if ($labelUrl === null) {
             throw new ShippingException('PPL: label URL not found in batch response (completeLabel.labelUrls[0])');
         }

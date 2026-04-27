@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Ages\ShippingGateway\Common;
 
+use Ages\ShippingGateway\Common\Carrier;
 use Ages\ShippingGateway\Common\Shipment\ShipmentLabel;
 use Ages\ShippingGateway\Common\Shipment\ShipmentRequest;
 
@@ -14,5 +15,5 @@ interface ShipmentHandlerInterface
      */
     public function createShipment(ShipmentRequest $request): array;
 
-    public function getCarrierCode(): string;
+    public function getCarrier(): Carrier;
 }

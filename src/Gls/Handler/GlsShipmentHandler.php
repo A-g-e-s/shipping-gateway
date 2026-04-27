@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Ages\ShippingGateway\Gls\Handler;
 
+use Ages\ShippingGateway\Common\Carrier;
 use Ages\ShippingGateway\Common\ShipmentHandlerInterface;
 use Ages\ShippingGateway\Common\Shipment\ShipmentLabel;
 use Ages\ShippingGateway\Common\Shipment\ShipmentRequest;
@@ -15,9 +16,9 @@ use UnexpectedValueException;
 
 class GlsShipmentHandler extends GlsApi implements ShipmentHandlerInterface
 {
-    public function getCarrierCode(): string
+    public function getCarrier(): Carrier
     {
-        return 'GLS';
+        return Carrier::Gls;
     }
 
     public function createShipment(ShipmentRequest $request): array
@@ -60,7 +61,7 @@ class GlsShipmentHandler extends GlsApi implements ShipmentHandlerInterface
 
             $parcelNumber = $data->PrintLabelsInfoList[0]->ParcelNumber ?? $ref;
             $labelPdf = implode(array_map('chr', $data->Labels));
-            $labels[] = new ShipmentLabel('GLS', (string) $parcelNumber, $labelPdf);
+            $labels[] = new ShipmentLabel(Carrier::Gls, (string) $parcelNumber, $labelPdf);
         }
 
         return $labels;

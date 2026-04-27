@@ -96,9 +96,9 @@ services:
 Předáš `ShipmentRequest`, označíš dopravce a dostaneš `ShipmentLabel[]` — jeden štítek per balík.
 
 ```php
+use Ages\ShippingGateway\Common\Carrier;
 use Ages\ShippingGateway\Common\Shipment\CashOnDelivery;
 use Ages\ShippingGateway\Common\Shipment\Parcel;
-use Ages\ShippingGateway\Common\Shipment\ParcelType;
 use Ages\ShippingGateway\Common\Shipment\RecipientAddress;
 use Ages\ShippingGateway\Common\Shipment\ShipmentRequest;
 use Ages\ShippingGateway\Common\Shipment\ShipmentValue;
@@ -124,7 +124,7 @@ $request = new ShipmentRequest(
 );
 
 /** @var \Ages\ShippingGateway\ShippingGateway $gateway */
-$labels = $gateway->createShipment('GLS', $request);
+$labels = $gateway->createShipment(Carrier::Gls, $request);
 
 foreach ($labels as $label) {
     echo $label->trackingNumber;             // číslo zásilky
@@ -132,7 +132,7 @@ foreach ($labels as $label) {
 }
 ```
 
-Podporované hodnoty `$carrier`: `gls`, `ppl`, `czechpost`, `cp`, `gbw`.
+Dostupné hodnoty `Carrier`: `Carrier::Gls`, `Carrier::Ppl`, `Carrier::CzechPost`, `Carrier::GebruderWeiss`.
 
 ---
 
@@ -186,7 +186,7 @@ new Parcel(weight: 5.0, dimensions: new Dimensions(60, 40, 30));
 #### ShipmentLabel — výstup
 
 ```php
-$label->carrier;        // 'GLS' | 'PPL' | 'CP'
+$label->carrier;        // Carrier::Gls | Carrier::Ppl | Carrier::CzechPost
 $label->trackingNumber; // číslo zásilky pro sledování
 $label->labelPdf;       // raw PDF bytes — ulož nebo pošli do prohlížeče
 
@@ -205,9 +205,9 @@ $tracking = $gateway->tracking($label->carrier, $label->trackingNumber);
 ### Unified tracking
 
 ```php
-$tracking = $gateway->tracking('GLS', '1234567890');
-$tracking = $gateway->tracking('PPL', 'KEA12345678');
-$tracking = $gateway->tracking('CzechPost', 'DR123456789CZ');
+$tracking = $gateway->tracking(Carrier::Gls, '1234567890');
+$tracking = $gateway->tracking(Carrier::Ppl, 'KEA12345678');
+$tracking = $gateway->tracking(Carrier::CzechPost, 'DR123456789CZ');
 
 if ($tracking !== null) {
     $tracking->getDelivered();           // bool
@@ -226,7 +226,7 @@ if ($tracking !== null) {
 }
 ```
 
-Podporované hodnoty pro `$carrier`: `gls`, `ppl`, `czechpost`, `česká pošta`, `cp`, `balikovna`, `balíkovna`.
+> Gebrüder Weiss nepodporuje tracking — vyhodí `LogicException`.
 
 ---
 
@@ -343,6 +343,7 @@ class CzechPost extends CzechPostApi
 src/
 ├── ShippingGateway.php               ← facade: tracking() + createShipment()
 ├── Common/
+│   ├── Carrier.php                   ← enum: Gls | Ppl | CzechPost | GebruderWeiss
 │   ├── CarrierInterface.php
 │   ├── ShipmentHandlerInterface.php  ← createShipment(ShipmentRequest): ShipmentLabel[]
 │   ├── ParcelTrackingInterface.php
@@ -351,7 +352,7 @@ src/
 │   ├── ShippingException.php
 │   └── Shipment/
 │       ├── ShipmentRequest.php       ← vstupní DTO
-│       ├── ShipmentLabel.php         ← výstupní DTO (trackingNumber + labelPdf)
+│       ├── ShipmentLabel.php         ← výstupní DTO (carrier, trackingNumber, labelPdf)
 │       ├── RecipientAddress.php      ← fromFullName() factory
 │       ├── Parcel.php                ← weight, type, dimensions
 │       ├── Dimensions.php

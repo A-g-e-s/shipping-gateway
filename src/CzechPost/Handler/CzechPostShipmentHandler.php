@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Ages\ShippingGateway\CzechPost\Handler;
 
 use Ages\ShippingGateway\Common\Shipment\RecipientType;
+use Ages\ShippingGateway\Common\Carrier;
 use Ages\ShippingGateway\Common\ShipmentHandlerInterface;
 use Ages\ShippingGateway\Common\Shipment\Parcel;
 use Ages\ShippingGateway\Common\Shipment\ParcelType;
@@ -25,9 +26,9 @@ use Ages\ShippingGateway\CzechPost\Entity\Values\ServiceCode;
 
 class CzechPostShipmentHandler extends CzechPostApi implements ShipmentHandlerInterface
 {
-    public function getCarrierCode(): string
+    public function getCarrier(): Carrier
     {
-        return 'CP';
+        return Carrier::CzechPost;
     }
 
     public function createShipment(ShipmentRequest $request): array
@@ -170,7 +171,7 @@ class CzechPostShipmentHandler extends CzechPostApi implements ShipmentHandlerIn
         $labels = [];
         foreach ($parcelData as $package) {
             $trackingNumber = (string) ($package['parcelCode'] ?? $package['recordNumber'] ?? '');
-            $labels[] = new ShipmentLabel('CP', $trackingNumber, $labelPdf);
+            $labels[] = new ShipmentLabel(Carrier::CzechPost, $trackingNumber, $labelPdf);
         }
 
         return $labels;

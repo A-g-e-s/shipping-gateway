@@ -2,6 +2,7 @@
 
 namespace Ages\ShippingGateway;
 
+use Ages\ShippingGateway\Common\Carrier;
 use Ages\ShippingGateway\Common\ParcelTrackingInterface;
 use Ages\ShippingGateway\Common\Shipment\ShipmentLabel;
 use Ages\ShippingGateway\Common\Shipment\ShipmentRequest;
@@ -52,13 +53,13 @@ class ShippingGateway
         return $this->czechPostApi ??= new CzechPostApi($this->czechPostConfig);
     }
 
-    public function tracking(string $carrier, string $consignmentId): ?ParcelTrackingInterface
+    public function tracking(Carrier $carrier, string $consignmentId): ?ParcelTrackingInterface
     {
-        $api = match (strtolower($carrier)) {
-            'gls' => $this->gls(),
-            'ppl' => $this->ppl(),
-            'czechpost', 'česká pošta', 'cp', 'balikovna', 'balíkovna' => $this->czechPost(),
-            default => throw new \InvalidArgumentException("Unknown carrier: $carrier"),
+        $api = match ($carrier) {
+            Carrier::Gls          => $this->gls(),
+            Carrier::Ppl          => $this->ppl(),
+            Carrier::CzechPost    => $this->czechPost(),
+            Carrier::GebruderWeiss => throw new \LogicException('Gebrüder Weiss tracking is not supported'),
         };
         return $api->getParcelTracking($consignmentId);
     }
@@ -66,14 +67,13 @@ class ShippingGateway
     /**
      * @return ShipmentLabel[]
      */
-    public function createShipment(string $carrier, ShipmentRequest $request): array
+    public function createShipment(Carrier $carrier, ShipmentRequest $request): array
     {
-        $handler = match (strtolower($carrier)) {
-            'gls'                                                        => $this->glsShipmentHandler(),
-            'ppl'                                                        => $this->pplShipmentHandler(),
-            'czechpost', 'česká pošta', 'cp', 'balikovna', 'balíkovna' => $this->czechPostShipmentHandler(),
-            'gbw', 'gebruderweiss', 'gebrüderweiss'                     => new GebruderWeissShipmentHandler(),
-            default => throw new \InvalidArgumentException("Unknown carrier: $carrier"),
+        $handler = match ($carrier) {
+            Carrier::Gls           => $this->glsShipmentHandler(),
+            Carrier::Ppl           => $this->pplShipmentHandler(),
+            Carrier::CzechPost     => $this->czechPostShipmentHandler(),
+            Carrier::GebruderWeiss => new GebruderWeissShipmentHandler(),
         };
         return $handler->createShipment($request);
     }

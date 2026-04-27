@@ -73,7 +73,7 @@ class ParcelEntity extends AbstractEntity
             ]
         ];
 
-        if ($this->specificDeliveryEntity !== null) {
+        if ($this->specificDeliveryEntity !== null && $this->specificDeliveryEntity->pdsCode !== null) {
             $data['shipments'][0]['specificDelivery'] = $this->specificDeliveryEntity->toArray();
         }
         return $data;
