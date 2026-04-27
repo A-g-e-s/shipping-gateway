@@ -2,7 +2,6 @@
 
 namespace Ages\ShippingGateway;
 
-use Ages\ShippingGateway\Common\CarrierInterface;
 use Ages\ShippingGateway\Common\ParcelTrackingInterface;
 use Ages\ShippingGateway\CzechPost\Config\CzechPostConfig;
 use Ages\ShippingGateway\CzechPost\CzechPostApi;
@@ -18,10 +17,11 @@ class ShippingGateway
     private ?CzechPostApi $czechPostApi = null;
 
     public function __construct(
-        private readonly ?GlsConfig $glsConfig = null,
-        private readonly ?PplConfig $pplConfig = null,
+        private readonly ?GlsConfig       $glsConfig = null,
+        private readonly ?PplConfig       $pplConfig = null,
         private readonly ?CzechPostConfig $czechPostConfig = null,
-    ) {
+    )
+    {
     }
 
     public function gls(): GlsApi
@@ -47,7 +47,7 @@ class ShippingGateway
         $api = match (strtolower($carrier)) {
             'gls' => $this->gls(),
             'ppl' => $this->ppl(),
-            'czechpost', 'česká pošta', 'cp' => $this->czechPost(),
+            'czechpost', 'česká pošta', 'cp', 'balikovna', 'balíkovna' => $this->czechPost(),
             default => throw new \InvalidArgumentException("Unknown carrier: $carrier"),
         };
         return $api->getParcelTracking($consignmentId);
