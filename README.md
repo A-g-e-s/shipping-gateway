@@ -74,7 +74,7 @@ services:
     czechPostConfig: Ages\ShippingGateway\CzechPost\Config\CzechPostConfig(
         apiToken: api-token-here
         secretKey: secret-key-here
-        idContract: 415921001
+        idContract: 123456789
         customerId: L12345
         postCode: '53307'
         locationNumber: 1
