@@ -151,7 +151,7 @@ class GlsApi implements CarrierInterface
      * @param RequestObject $object
      * @return array<mixed>
      */
-    private function getRequestPayload(array $dataList, RequestObject $object): array
+    protected function getRequestPayload(array $dataList, RequestObject $object): array
     {
         $bytes = unpack('C*', hash('sha512', $this->config->password, true));
         $passwordBytes = array_values(is_array($bytes) ? $bytes : []);
@@ -180,7 +180,7 @@ class GlsApi implements CarrierInterface
      * @param Method       $method
      * @param array<mixed> $payload
      */
-    private function getResponse(Method $method, array $payload): null|string
+    protected function getResponse(Method $method, array $payload): null|string
     {
         $url = $this->config->url . $method->value;
         try {

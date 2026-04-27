@@ -4,7 +4,6 @@ namespace Ages\ShippingGateway\CzechPost\Entity;
 
 use Ages\ShippingGateway\Common\ParcelStatusInterface;
 use Nette\Utils\ArrayHash;
-use Nextras\Dbal\Utils\DateTimeImmutable;
 use Tracy\Debugger;
 
 class ParcelStatus implements ParcelStatusInterface

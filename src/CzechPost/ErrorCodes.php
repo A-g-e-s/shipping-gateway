@@ -4,12 +4,12 @@ namespace Ages\ShippingGateway\CzechPost;
 
 class ErrorCodes
 {
-    const TypeInfo = 'I';
-    const TypeError = 'E';
+    const string TypeInfo = 'I';
+    const string TypeError = 'E';
     /**
      * array[array{0: string, 1: string}]
      */
-    const Errors = [
+    const array Errors = [
         1 => [self::TypeInfo, 'Vše v pořádku'],
         2 => [self::TypeError, 'Interní chyba aplikace'],
         3 => [self::TypeError, 'Login není evidován k uvedenému číslu podavatele'],

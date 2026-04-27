@@ -5,7 +5,6 @@ namespace Ages\ShippingGateway\Gls\Entity;
 use Ages\ShippingGateway\Common\ParcelStatusInterface;
 use Ages\ShippingGateway\Gls\Entity\Values\StatusCode;
 use Nette\Utils\ArrayHash;
-use Nextras\Dbal\Utils\DateTimeImmutable;
 use Tracy\Debugger;
 
 class ParcelStatus implements ParcelStatusInterface
