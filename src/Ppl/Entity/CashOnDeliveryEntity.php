@@ -2,6 +2,8 @@
 
 namespace Ages\ShippingGateway\Ppl\Entity;
 
+use Ages\ShippingGateway\Common\AbstractEntity;
+
 class CashOnDeliveryEntity extends AbstractEntity
 {
     private float $amount;

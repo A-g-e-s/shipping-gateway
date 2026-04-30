@@ -2,17 +2,17 @@
 
 namespace Ages\ShippingGateway\Common;
 
-class PickupAddress
+readonly class PickupAddress
 {
     public function __construct(
-        public readonly string $name,
-        public readonly string $street,
-        public readonly string $city,
-        public readonly string $zip,
-        public readonly string $country,
-        public readonly string $phone,
-        public readonly string $email,
-        public readonly ?string $houseNumber = null,
+        public string  $name,
+        public string  $street,
+        public string  $city,
+        public string  $zip,
+        public string  $country,
+        public string  $phone,
+        public string  $email,
+        public ?string $houseNumber = null,
     ) {
     }
 

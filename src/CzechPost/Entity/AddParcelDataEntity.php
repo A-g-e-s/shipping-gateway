@@ -2,14 +2,23 @@
 
 namespace Ages\ShippingGateway\CzechPost\Entity;
 
+use Ages\ShippingGateway\Common\AbstractEntity;
 use Ages\ShippingGateway\CzechPost\Entity\Values\PrefixParcelCode;
 
 class AddParcelDataEntity extends AbstractEntity
 {
-    private string $recordID;
+    private string $recordID {
+        get {
+            return $this->recordID;
+        }
+    }
     private ?string $parcelCode;
     private PrefixParcelCode $prefixParcelCode;
-    private float $weight;
+    private float $weight {
+        get {
+            return $this->weight;
+        }
+    }
     private int $sequenceParcel;
     private int $quantityParcel;
 
@@ -34,9 +43,6 @@ class AddParcelDataEntity extends AbstractEntity
         $entity->parcelCode = $parcelCode;
         return $entity;
     }
-
-    public function getRecordId(): string { return $this->recordID; }
-    public function getWeight(): float { return $this->weight; }
 
     public function toArray(): array
     {

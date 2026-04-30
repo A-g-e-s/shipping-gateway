@@ -4,6 +4,7 @@ namespace Ages\ShippingGateway\Gls;
 
 use Ages\ShippingGateway\Common\CarrierInterface;
 use Ages\ShippingGateway\Common\ParcelTrackingInterface;
+use Ages\ShippingGateway\Common\ShippingException;
 use Ages\ShippingGateway\Gls\Config\GlsConfig;
 use Ages\ShippingGateway\Gls\Entity\AddressEntity;
 use Ages\ShippingGateway\Gls\Entity\ParcelEntity;
@@ -13,7 +14,6 @@ use Ages\ShippingGateway\Gls\Values\Method;
 use Ages\ShippingGateway\Gls\Values\RequestObject;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
-use Tracy\Debugger;
 use UnexpectedValueException;
 
 class GlsApi implements CarrierInterface
@@ -42,18 +42,14 @@ class GlsApi implements CarrierInterface
         );
     }
 
-    protected function printLabels(ParcelEntity $parcels): false|\stdClass
+    protected function printLabels(ParcelEntity $parcels): \stdClass
     {
         $request = $this->getRequestPayload([$parcels->toArray()], RequestObject::PrintLabels);
-        $response = $this->getResponse(Method::PrintLabels, $request);
-        if (is_string($response)) {
-            $data = json_decode($response, false);
-            if ($data instanceof \stdClass) {
-                return $data;
-            }
+        $data = json_decode($this->getResponse(Method::PrintLabels, $request), false);
+        if ($data instanceof \stdClass) {
+            return $data;
         }
-        Debugger::log('GLS Unexpected response');
-        return false;
+        throw new ShippingException('GLS: Unexpected response from printLabels');
     }
 
     /**
@@ -62,17 +58,14 @@ class GlsApi implements CarrierInterface
     protected function prepareParcels(ParcelEntity $parcels): mixed
     {
         $request = $this->getRequestPayload([$parcels->toArray()], RequestObject::PrepareLabels);
-        $response = $this->getResponse(Method::PrepareLabels, $request);
-        if (is_string($response)) {
-            $data = json_decode($response, false);
-            if ($data instanceof \stdClass) {
-                $parcelIdList = [];
-                if (isset($data->PrepareLabelsError) && isset($data->ParcelInfoList) && count($data->PrepareLabelsError) === 0 && count($data->ParcelInfoList) > 0) {
-                    foreach ($data->ParcelInfoList as $parcelInfo) {
-                        $parcelIdList[$parcelInfo->ClientReference] = $parcelInfo->ParcelId;
-                    }
-                    return $parcelIdList;
+        $data = json_decode($this->getResponse(Method::PrepareLabels, $request), false);
+        if ($data instanceof \stdClass) {
+            $parcelIdList = [];
+            if (isset($data->PrepareLabelsError) && isset($data->ParcelInfoList) && count($data->PrepareLabelsError) === 0 && count($data->ParcelInfoList) > 0) {
+                foreach ($data->ParcelInfoList as $parcelInfo) {
+                    $parcelIdList[$parcelInfo->ClientReference] = $parcelInfo->ParcelId;
                 }
+                return $parcelIdList;
             }
         }
         throw new UnexpectedValueException('Unexpected response');
@@ -86,12 +79,9 @@ class GlsApi implements CarrierInterface
             'TypeOfPrinter' => 'Connect'
         ];
         $request = $this->getRequestPayload($labelsRequest, RequestObject::PrintedLabels);
-        $response = $this->getResponse(Method::PrintedLabels, $request);
-        if (is_string($response)) {
-            $data = json_decode($response);
-            if ($data instanceof \stdClass && isset($data->Labels)) {
-                return implode(array_map('chr', $data->Labels));
-            }
+        $data = json_decode($this->getResponse(Method::PrintedLabels, $request));
+        if ($data instanceof \stdClass && isset($data->Labels)) {
+            return implode(array_map('chr', $data->Labels));
         }
         throw new UnexpectedValueException('Unexpected response');
     }
@@ -104,44 +94,37 @@ class GlsApi implements CarrierInterface
             'LanguageIsoCode' => 'CZ'
         ];
         $request = $this->getRequestPayload($statusRequest, RequestObject::ParcelStatuses);
-        $response = $this->getResponse(Method::ParcelStatuses, $request);
-        if (is_string($response)) {
-            $data = json_decode($response);
-            if ($data instanceof \stdClass) {
-                return $data;
-            }
+        $data = json_decode($this->getResponse(Method::ParcelStatuses, $request));
+        if ($data instanceof \stdClass) {
+            return $data;
         }
         throw new UnexpectedValueException('Unexpected response');
     }
 
     public function getParcelTracking(string $consignmentId): ?ParcelTrackingInterface
     {
-        try {
-            $tracking = $this->parcelStatuses($consignmentId);
-            if (isset($tracking->DeliveryCountryCode, $tracking->DeliveryZipCode, $tracking->ParcelNumber, $tracking->ClientReference, $tracking->Weight)) {
-                $parcelTracking = ParcelTracking::of(
-                    $tracking->DeliveryCountryCode,
-                    $tracking->DeliveryZipCode,
-                    $tracking->ParcelNumber,
-                    $tracking->ClientReference,
-                    $tracking->Weight,
-                );
-                foreach ($tracking->ParcelStatusList as $statusLine) {
-                    if (isset($statusLine->DepotCity, $statusLine->DepotNumber, $statusLine->StatusCode, $statusLine->StatusDate, $statusLine->StatusDescription, $statusLine->StatusInfo)) {
-                        $parcelTracking->addStatus(ParcelStatus::of(
-                            $statusLine->DepotCity,
-                            $statusLine->DepotNumber,
-                            $statusLine->StatusCode,
-                            $statusLine->StatusDate,
-                            $statusLine->StatusDescription,
-                            $statusLine->StatusInfo,
-                        ));
-                    }
+        $tracking = $this->parcelStatuses($consignmentId);
+        if (isset($tracking->DeliveryCountryCode, $tracking->DeliveryZipCode, $tracking->ParcelNumber, $tracking->ClientReference, $tracking->Weight)) {
+            $parcelTracking = ParcelTracking::of(
+                $tracking->DeliveryCountryCode,
+                $tracking->DeliveryZipCode,
+                $tracking->ParcelNumber,
+                $tracking->ClientReference,
+                $tracking->Weight,
+            );
+            foreach ($tracking->ParcelStatusList as $statusLine) {
+                if (isset($statusLine->DepotCity, $statusLine->DepotNumber, $statusLine->StatusCode, $statusLine->StatusDate, $statusLine->StatusDescription, $statusLine->StatusInfo)) {
+                    $parcelTracking->addStatus(ParcelStatus::of(
+                        $statusLine->DepotCity,
+                        $statusLine->DepotNumber,
+                        $statusLine->StatusCode,
+                        $statusLine->StatusDate,
+                        $statusLine->StatusDescription,
+                        $statusLine->StatusInfo,
+                    ));
                 }
-                return $parcelTracking;
             }
-        } catch (\Exception $exception) {
-            Debugger::log($exception);
+            return $parcelTracking;
         }
         return null;
     }
@@ -179,8 +162,9 @@ class GlsApi implements CarrierInterface
     /**
      * @param Method       $method
      * @param array<mixed> $payload
+     * @throws ShippingException
      */
-    protected function getResponse(Method $method, array $payload): null|string
+    protected function getResponse(Method $method, array $payload): string
     {
         $url = $this->config->url . $method->value;
         try {
@@ -196,15 +180,16 @@ class GlsApi implements CarrierInterface
                 'verify' => true,
             ]);
             if ($response->getStatusCode() !== 200) {
-                return null;
+                throw new ShippingException('GLS: HTTP ' . $response->getStatusCode());
             }
             $body = $response->getBody();
             $text = $body->getContents();
             $body->close();
             return $text;
+        } catch (ShippingException $e) {
+            throw $e;
         } catch (GuzzleException $e) {
-            Debugger::log($e);
-            return null;
+            throw new ShippingException('GLS HTTP error: ' . $e->getMessage(), 0, $e);
         }
     }
 }

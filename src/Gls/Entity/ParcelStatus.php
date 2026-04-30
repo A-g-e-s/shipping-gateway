@@ -1,23 +1,42 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Ages\ShippingGateway\Gls\Entity;
 
 use Ages\ShippingGateway\Common\ParcelStatusInterface;
 use Ages\ShippingGateway\Gls\Entity\Values\StatusCode;
 use Nette\Utils\ArrayHash;
-use Tracy\Debugger;
 
 class ParcelStatus implements ParcelStatusInterface
 {
-    private string $depotCity;
-    private string $depotCode;
-    private string $statusCode;
-    private ?\DateTimeImmutable $statusDate;
-    private string $statusDescription;
-    private ?string $statusInfo;
-    private ?string $customInfo;
-    private bool $delivered;
-    private bool $damaged;
+    private(set) string $depotCity {
+        get => $this->depotCity;
+    }
+    private(set) string $depotCode {
+        get => $this->depotCode;
+    }
+    private(set) string $statusCode {
+        get => $this->statusCode;
+    }
+    private(set) ?\DateTimeImmutable $statusDate {
+        get => $this->statusDate;
+    }
+    private(set) string $statusDescription {
+        get => $this->statusDescription;
+    }
+    private(set) ?string $statusInfo {
+        get => $this->statusInfo;
+    }
+    private(set) ?string $customInfo {
+        get => $this->customInfo;
+    }
+    private(set) bool $delivered {
+        get => $this->delivered;
+    }
+    private(set) bool $damaged {
+        get => $this->damaged;
+    }
 
     final private function __construct()
     {
@@ -30,12 +49,13 @@ class ParcelStatus implements ParcelStatusInterface
         string $statusDate,
         string $statusDescription,
         string $statusInfo,
-    ): self {
+    ): self
+    {
         $entity = new static();
         $entity->depotCity = $depotCity;
         $entity->depotCode = $depotCode;
         $entity->statusCode = $statusCode;
-        $entity->statusDate = self::getDateTime($statusDate);
+        $entity->statusDate = self::parseDateTime($statusDate);
         $entity->statusDescription = $statusDescription;
         $entity->statusInfo = $statusInfo !== '' ? $statusInfo : null;
         $myCode = StatusCode::getStatusCode($entity->statusCode);
@@ -51,24 +71,22 @@ class ParcelStatus implements ParcelStatusInterface
         return $entity;
     }
 
-    private static function getDateTime(string $dateString): ?DateTimeImmutable
+    private static function parseDateTime(string $dateString): ?\DateTimeImmutable
     {
         try {
             if (preg_match('/\/Date\((\d+)([+-]\d{4})\)\//', $dateString, $matches)) {
-                $timestampMillis = (int)$matches[1];
-                $timezoneOffset = $matches[2];
-                $timestampSeconds = $timestampMillis / 1000;
-                $date = new DateTimeImmutable('@' . $timestampSeconds);
-                $timezone = new \DateTimeZone($timezoneOffset);
-                return $date->setTimezone($timezone);
+                $date = new \DateTimeImmutable('@' . ((int)$matches[1] / 1000));
+                return $date->setTimezone(new \DateTimeZone($matches[2]));
             }
             return null;
-        } catch (\Exception $exception) {
-            Debugger::log($exception);
+        } catch (\Exception) {
             return null;
         }
     }
 
+    /**
+     * @return ArrayHash<mixed>
+     */
     public function toArrayHash(): ArrayHash
     {
         return ArrayHash::from([
@@ -83,14 +101,4 @@ class ParcelStatus implements ParcelStatusInterface
             'damaged' => $this->damaged,
         ]);
     }
-
-    public function getDelivered(): bool { return $this->delivered; }
-    public function getDamaged(): bool { return $this->damaged; }
-    public function getCustomInfo(): ?string { return $this->customInfo; }
-    public function getStatusInfo(): ?string { return $this->statusInfo; }
-    public function getStatusDescription(): string { return $this->statusDescription; }
-    public function getStatusDate(): ?\DateTimeImmutable { return $this->statusDate; }
-    public function getStatusCode(): string { return $this->statusCode; }
-    public function getDepotCode(): string { return $this->depotCode; }
-    public function getDepotCity(): string { return $this->depotCity; }
 }

@@ -2,6 +2,8 @@
 
 namespace Ages\ShippingGateway\Ppl\Entity;
 
+use Ages\ShippingGateway\Common\AbstractEntity;
+
 class ParcelEntity extends AbstractEntity
 {
     private string $clientReference;
@@ -73,7 +75,7 @@ class ParcelEntity extends AbstractEntity
             ]
         ];
 
-        if ($this->specificDeliveryEntity !== null && $this->specificDeliveryEntity->pdsCode !== null) {
+        if ($this->specificDeliveryEntity->pdsCode !== null) {
             $data['shipments'][0]['specificDelivery'] = $this->specificDeliveryEntity->toArray();
         }
         return $data;

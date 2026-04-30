@@ -2,6 +2,7 @@
 
 namespace Ages\ShippingGateway\Gls\Entity;
 
+use Ages\ShippingGateway\Common\AbstractEntity;
 use Ages\ShippingGateway\Gls\Values\ServiceCode;
 
 class ParcelEntity extends AbstractEntity
@@ -48,7 +49,7 @@ class ParcelEntity extends AbstractEntity
             'PickupAddress' => $this->pickupAddress->toArray(),
             'DeliveryAddress' => $this->deliveryAddress->toArray(),
         ];
-        foreach ($this->services->getServices() as $service) {
+        foreach ($this->services->services as $service) {
             if ($service === ServiceCode::CashOnDelivery) {
                 $e['CODAmount'] = $this->services->getCodPrice();
                 $e['CODReference'] = $this->services->getCodVS();

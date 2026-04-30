@@ -48,9 +48,6 @@ class GlsShipmentHandler extends GlsApi implements ShipmentHandlerInterface
             );
 
             $data = $this->printLabels($entity);
-            if ($data === false) {
-                throw new UnexpectedValueException('GLS: printLabels API call failed');
-            }
             if (!empty($data->PrintLabelsErrorList)) {
                 $errors = implode(', ', array_map(
                     fn($e) => sprintf('%s (%s)', $e->ErrorCode, $e->ErrorDescription),

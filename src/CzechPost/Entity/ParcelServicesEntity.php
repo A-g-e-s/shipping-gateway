@@ -2,6 +2,7 @@
 
 namespace Ages\ShippingGateway\CzechPost\Entity;
 
+use Ages\ShippingGateway\Common\AbstractEntity;
 use Ages\ShippingGateway\CzechPost\Entity\Values\ServiceCode;
 
 class ParcelServicesEntity extends AbstractEntity

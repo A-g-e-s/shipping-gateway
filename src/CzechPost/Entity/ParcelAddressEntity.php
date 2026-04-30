@@ -2,6 +2,7 @@
 
 namespace Ages\ShippingGateway\CzechPost\Entity;
 
+use Ages\ShippingGateway\Common\AbstractEntity;
 use Ages\ShippingGateway\CzechPost\Entity\Values\ParcelAddressSubject;
 
 class ParcelAddressEntity extends AbstractEntity
@@ -14,7 +15,7 @@ class ParcelAddressEntity extends AbstractEntity
     private ParcelAddressSubject $subject;
     private ?string $mobilNumber;
     private ?string $phoneNumber;
-    private ?string $emailAddress;
+    private string $emailAddress;
     private AddressEntity $address;
 
     final private function __construct()
@@ -59,7 +60,7 @@ class ParcelAddressEntity extends AbstractEntity
         if ($this->company !== null) { $e['company'] = $this->company; }
         if ($this->mobilNumber !== null) { $e['mobilNumber'] = $this->mobilNumber; }
         if ($this->phoneNumber !== null) { $e['phoneNumber'] = $this->phoneNumber; }
-        if ($this->emailAddress !== null) { $e['emailAddress'] = $this->emailAddress; }
+        if ($this->emailAddress !== '') { $e['emailAddress'] = $this->emailAddress; }
         if ($this->aditionAddress !== null) { $e['aditionAddress'] = $this->aditionAddress; }
         return $e;
     }

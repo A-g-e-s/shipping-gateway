@@ -14,4 +14,5 @@ enum ServiceCode: string
     case PackageSizeXl = 'XL';
     case CashOnDelivery = '41';
     case MultipartPackage = '70';
+    case BulkyParcel = '10';
 }

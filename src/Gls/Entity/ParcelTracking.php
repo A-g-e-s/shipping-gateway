@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Ages\ShippingGateway\Gls\Entity;
 
 use Ages\ShippingGateway\Common\ParcelTrackingInterface;
@@ -7,30 +9,48 @@ use Nette\Utils\ArrayHash;
 
 class ParcelTracking implements ParcelTrackingInterface
 {
-    private string $deliveryCountryCode;
-    private string $deliveryZipCode;
-    private string $parcelNumber;
-    private string $clientReference;
-    private bool $delivered = false;
-    private ?\DateTimeImmutable $deliveredDate = null;
-    private bool $damaged = false;
-    /**
-     * @var ParcelStatus[]
-     */
-    private array $parcelStatuses = [];
-    private float $weight;
+    private(set) string $deliveryCountryCode {
+        get => $this->deliveryCountryCode;
+    }
+    private(set) string $deliveryZipCode {
+        get => $this->deliveryZipCode;
+    }
+    private(set) string $parcelNumber {
+        get => $this->parcelNumber;
+    }
+    private(set) string $clientReference {
+        get => $this->clientReference;
+    }
+    private(set) bool $delivered = false {
+        get => $this->delivered;
+    }
+    private(set) ?\DateTimeImmutable $deliveredDate = null {
+        get => $this->deliveredDate;
+    }
+    private(set) bool $damaged = false {
+        get => $this->damaged;
+    }
+    private(set) float $weight {
+        get => $this->weight;
+    }
+
+    /** @var ParcelStatus[] */
+    private(set) array $parcelStatuses = [] {
+        get => $this->parcelStatuses;
+    }
 
     final private function __construct()
     {
     }
 
     public static function of(
-        string $deliveryCountryCode,
-        string $deliveryZipCode,
-        string $parcelNumber,
-        string $clientReference,
+        string       $deliveryCountryCode,
+        string       $deliveryZipCode,
+        string       $parcelNumber,
+        string       $clientReference,
         string|float $weight,
-    ): self {
+    ): self
+    {
         $entity = new static();
         $entity->deliveryCountryCode = $deliveryCountryCode;
         $entity->deliveryZipCode = $deliveryZipCode;
@@ -42,16 +62,21 @@ class ParcelTracking implements ParcelTrackingInterface
 
     public function addStatus(ParcelStatus $status): void
     {
-        $this->parcelStatuses[] = $status;
-        if ($status->getDelivered() === true) {
+        $statuses = $this->parcelStatuses;
+        $statuses[] = $status;
+        $this->parcelStatuses = $statuses;
+        if ($status->delivered) {
             $this->delivered = true;
-            $this->deliveredDate = $status->getStatusDate();
+            $this->deliveredDate = $status->statusDate;
         }
-        if ($status->getDamaged() === true) {
+        if ($status->damaged) {
             $this->damaged = true;
         }
     }
 
+    /**
+     * @return ArrayHash<mixed>
+     */
     public function toArrayHash(): ArrayHash
     {
         $r = [];
@@ -69,18 +94,4 @@ class ParcelTracking implements ParcelTrackingInterface
             'parcelStatus' => $r,
         ]);
     }
-
-    public function getDeliveryCountryCode(): string { return $this->deliveryCountryCode; }
-    public function getDeliveryZipCode(): string { return $this->deliveryZipCode; }
-    public function getParcelNumber(): string { return $this->parcelNumber; }
-    public function getClientReference(): string { return $this->clientReference; }
-    public function getDelivered(): bool { return $this->delivered; }
-    public function getDeliveredDate(): ?\DateTimeImmutable { return $this->deliveredDate; }
-    public function getDamaged(): bool { return $this->damaged; }
-    public function getWeight(): float { return $this->weight; }
-
-    /**
-     * @return ParcelStatus[]
-     */
-    public function getParcelStatuses(): array { return $this->parcelStatuses; }
 }

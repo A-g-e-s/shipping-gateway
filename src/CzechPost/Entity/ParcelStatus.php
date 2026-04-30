@@ -1,21 +1,41 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Ages\ShippingGateway\CzechPost\Entity;
 
 use Ages\ShippingGateway\Common\ParcelStatusInterface;
 use Nette\Utils\ArrayHash;
-use Tracy\Debugger;
 
 class ParcelStatus implements ParcelStatusInterface
 {
-    private ?string $depotCity;
-    private ?string $depotCode;
-    private string $statusCode;
-    private ?\DateTimeImmutable $statusDate;
-    private string $statusDescription;
-    private bool $delivered;
-    private bool $damaged = false;
-    private ?string $customInfo = null;
+    private(set) ?string $depotCity {
+        get => $this->depotCity;
+    }
+    private(set) ?string $depotCode {
+        get => $this->depotCode;
+    }
+    private(set) string $statusCode {
+        get => $this->statusCode;
+    }
+    private(set) ?\DateTimeImmutable $statusDate {
+        get => $this->statusDate;
+    }
+    private(set) string $statusDescription {
+        get => $this->statusDescription;
+    }
+    private(set) ?string $statusInfo = null {
+        get => $this->statusInfo;
+    }
+    private(set) ?string $customInfo = null {
+        get => $this->customInfo;
+    }
+    private(set) bool $delivered {
+        get => $this->delivered;
+    }
+    private(set) bool $damaged = false {
+        get => $this->damaged;
+    }
 
     final private function __construct()
     {
@@ -27,28 +47,30 @@ class ParcelStatus implements ParcelStatusInterface
         string $statusCode,
         string $statusDate,
         string $statusDescription,
-    ): self {
+    ): self
+    {
         $entity = new static();
         $entity->depotCity = $depotCity !== '' ? $depotCity : null;
         $entity->depotCode = $depotCode !== '' ? $depotCode : null;
         $entity->statusCode = $statusCode;
-        $entity->statusDate = self::getDateTime($statusDate);
+        $entity->statusDate = self::parseDateTime($statusDate);
         $entity->statusDescription = $statusDescription;
         $entity->delivered = $statusCode === '91';
         return $entity;
     }
 
-    private static function getDateTime(string $dateString): ?DateTimeImmutable
+    private static function parseDateTime(string $dateString): ?\DateTimeImmutable
     {
         try {
-            $date = new DateTimeImmutable($dateString);
-            return $date->setTimezone(new \DateTimeZone('Europe/Prague'));
-        } catch (\Exception $exception) {
-            Debugger::log($exception);
+            return new \DateTimeImmutable($dateString)->setTimezone(new \DateTimeZone('Europe/Prague'));
+        } catch (\Exception) {
             return null;
         }
     }
 
+    /**
+     * @return ArrayHash<mixed>
+     */
     public function toArrayHash(): ArrayHash
     {
         return ArrayHash::from([
@@ -61,14 +83,4 @@ class ParcelStatus implements ParcelStatusInterface
             'damaged' => $this->damaged,
         ]);
     }
-
-    public function getDelivered(): bool { return $this->delivered; }
-    public function getDamaged(): bool { return $this->damaged; }
-    public function getCustomInfo(): ?string { return $this->customInfo; }
-    public function getStatusInfo(): ?string { return null; }
-    public function getStatusDescription(): string { return $this->statusDescription; }
-    public function getStatusDate(): ?\DateTimeImmutable { return $this->statusDate; }
-    public function getStatusCode(): string { return $this->statusCode; }
-    public function getDepotCode(): ?string { return $this->depotCode; }
-    public function getDepotCity(): ?string { return $this->depotCity; }
 }

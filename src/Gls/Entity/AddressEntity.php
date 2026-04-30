@@ -2,6 +2,8 @@
 
 namespace Ages\ShippingGateway\Gls\Entity;
 
+use Ages\ShippingGateway\Common\AbstractEntity;
+
 class AddressEntity extends AbstractEntity
 {
     private string $name;

@@ -1,23 +1,18 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Ages\ShippingGateway\Common;
 
 interface ParcelTrackingInterface
 {
-    public function getParcelNumber(): string;
+    public string $parcelNumber { get; }
+    public string $deliveryCountryCode { get; }
+    public bool $delivered { get; }
+    public ?\DateTimeImmutable $deliveredDate { get; }
+    public bool $damaged { get; }
+    public float $weight { get; }
 
-    public function getDelivered(): bool;
-
-    public function getDeliveredDate(): ?\DateTimeImmutable;
-
-    public function getDamaged(): bool;
-
-    public function getWeight(): float;
-
-    /**
-     * @return ParcelStatusInterface[]
-     */
-    public function getParcelStatuses(): array;
-
-    public function getDeliveryCountryCode(): string;
+    /** @var ParcelStatusInterface[] */
+    public array $parcelStatuses { get; }
 }

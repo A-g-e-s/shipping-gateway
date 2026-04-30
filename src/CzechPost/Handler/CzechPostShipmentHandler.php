@@ -43,6 +43,10 @@ class CzechPostShipmentHandler extends CzechPostApi implements ShipmentHandlerIn
         $firstRef = $total > 1 ? $request->reference . '-1' : $request->reference;
         $firstParams = $this->buildParams($parcels[0], $firstRef, $request, $total > 1 ? [1, $total] : null);
 
+        if ($parcels[0]->type === ParcelType::PackageOversize) {
+            $services->addService(ServiceCode::BulkyParcel);
+        }
+
         if ($total > 1) {
             $services->addService(ServiceCode::MultipartPackage);
         }
@@ -52,6 +56,10 @@ class CzechPostShipmentHandler extends CzechPostApi implements ShipmentHandlerIn
         $multipartData = [];
         for ($i = 1; $i < $total; $i++) {
             $ref = $request->reference . '-' . ($i + 1);
+            $multipartServices = [ServiceCode::MultipartPackage];
+            if ($parcels[$i]->type === ParcelType::PackageOversize) {
+                $multipartServices[] = ServiceCode::BulkyParcel;
+            }
             $multipartData[] = MultipartDataEntity::of(
                 AddParcelDataEntity::of(
                     $ref,
@@ -60,7 +68,7 @@ class CzechPostShipmentHandler extends CzechPostApi implements ShipmentHandlerIn
                     $i + 1,
                     $total,
                 ),
-                ParcelServicesEntity::of(ServiceCode::MultipartPackage),
+                ParcelServicesEntity::of(...$multipartServices),
             )->toArray();
         }
 

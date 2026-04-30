@@ -2,6 +2,8 @@
 
 namespace Ages\ShippingGateway\CzechPost\Entity;
 
+use Ages\ShippingGateway\Common\AbstractEntity;
+
 class MultipartDataEntity extends AbstractEntity
 {
     private AddParcelDataEntity $addParcelDataEntity;

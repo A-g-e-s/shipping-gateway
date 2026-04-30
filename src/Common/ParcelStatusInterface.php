@@ -1,24 +1,18 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Ages\ShippingGateway\Common;
 
 interface ParcelStatusInterface
 {
-    public function getDepotCity(): ?string;
-
-    public function getDepotCode(): ?string;
-
-    public function getStatusCode(): string;
-
-    public function getStatusDate(): ?\DateTimeImmutable;
-
-    public function getStatusDescription(): string;
-
-    public function getStatusInfo(): ?string;
-
-    public function getCustomInfo(): ?string;
-
-    public function getDelivered(): bool;
-
-    public function getDamaged(): bool;
+    public ?string $depotCity { get; }
+    public ?string $depotCode { get; }
+    public string $statusCode { get; }
+    public ?\DateTimeImmutable $statusDate { get; }
+    public string $statusDescription { get; }
+    public ?string $statusInfo { get; }
+    public ?string $customInfo { get; }
+    public bool $delivered { get; }
+    public bool $damaged { get; }
 }

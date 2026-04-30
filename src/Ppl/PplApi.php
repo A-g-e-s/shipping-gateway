@@ -14,13 +14,51 @@ use Ages\ShippingGateway\Ppl\Values\Method;
 use Ages\ShippingGateway\Ppl\Values\ShipmentState;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\ClientException;
-use GuzzleHttp\Exception\GuzzleException;
 use GuzzleHttp\Exception\RequestException;
-use Tracy\Debugger;
 
 class PplApi implements CarrierInterface
 {
-    private ?string $token = null;
+    private ?string $token = null {
+        get {
+            if ($this->token !== null) {
+                return $this->token;
+            }
+
+            $data = [
+                'client_id' => $this->config->clientId,
+                'client_secret' => $this->config->clientSecret,
+                'grant_type' => $this->config->grantType,
+                'scope' => $this->config->scope,
+            ];
+
+            try {
+                $response = $this->httpClient->post($this->config->url . Method::AccessToken->value, [
+                    'form_params' => $data,
+                    'headers' => [
+                        'Content-Type' => 'application/x-www-form-urlencoded'
+                    ]
+                ]);
+
+                if ($response->getStatusCode() === 401) {
+                    throw new ShippingException('PPL: Unauthorized');
+                }
+
+                $values = json_decode($response->getBody(), true);
+
+                if (json_last_error() !== JSON_ERROR_NONE) {
+                    throw new ShippingException('PPL: Response JSON Error');
+                }
+
+                if (is_array($values) && isset($values['access_token']) && is_string($values['access_token'])) {
+                    return $this->token = $values['access_token'];
+                }
+
+                throw new ShippingException('PPL: Token was not created');
+            } catch (RequestException $e) {
+                throw new ShippingException('PPL Guzzle Error: ' . $e->getMessage());
+            }
+        }
+    }
     private Client $httpClient;
 
     public function __construct(protected readonly PplConfig $config)
@@ -44,54 +82,13 @@ class PplApi implements CarrierInterface
         );
     }
 
-    public function getToken(): string
-    {
-        if ($this->token !== null) {
-            return $this->token;
-        }
-
-        $data = [
-            'client_id' => $this->config->clientId,
-            'client_secret' => $this->config->clientSecret,
-            'grant_type' => $this->config->grantType,
-            'scope' => $this->config->scope,
-        ];
-
-        try {
-            $response = $this->httpClient->post($this->config->url . Method::AccessToken->value, [
-                'form_params' => $data,
-                'headers' => [
-                    'Content-Type' => 'application/x-www-form-urlencoded'
-                ]
-            ]);
-
-            if ($response->getStatusCode() === 401) {
-                throw new ShippingException('PPL: Unauthorized');
-            }
-
-            $values = json_decode($response->getBody(), true);
-
-            if (json_last_error() !== JSON_ERROR_NONE) {
-                throw new ShippingException('PPL: Response JSON Error');
-            }
-
-            if (is_array($values) && isset($values['access_token']) && is_string($values['access_token'])) {
-                return $this->token = $values['access_token'];
-            }
-
-            throw new ShippingException('PPL: Token was not created');
-        } catch (RequestException $e) {
-            throw new ShippingException('PPL Guzzle Error: ' . $e->getMessage());
-        }
-    }
-
     public function createBatch(ParcelEntity $parcelEntity): string
     {
         try {
             $response = $this->httpClient->post($this->config->url . Method::ShipmentBatch->value, [
                 'json' => $parcelEntity->toArray(),
                 'headers' => [
-                    'Authorization' => 'Bearer ' . $this->getToken(),
+                    'Authorization' => 'Bearer ' . $this->token,
                     'Accept' => 'application/json',
                     'Content-Type' => 'application/json'
                 ]
@@ -111,23 +108,47 @@ class PplApi implements CarrierInterface
                 $data = json_decode($body, true);
                 $error = 'Bad Request';
                 if (is_array($data) && isset($data['errors']) && is_array($data['errors'])) {
-                    $error = '';
-                    foreach ($data['errors'] as $field => $messages) {
-                        foreach ($messages as $msg) {
-                            $error .= sprintf('<br />&nbsp;&nbsp;&nbsp;&nbsp;-> %s (%s)', $field, $msg);
+                    $messages = [];
+                    foreach ($data['errors'] as $field => $fieldMessages) {
+                        if (!is_array($fieldMessages)) {
+                            continue;
+                        }
+                        foreach ($fieldMessages as $msg) {
+                            if (!is_scalar($msg)) {
+                                continue;
+                            }
+                            $messages[] = sprintf('&nbsp;&nbsp;&nbsp;&nbsp;-> %s (%s)', $field, $msg);
                         }
                     }
+                    if ($messages !== []) {
+                        $error .= '<br />' . implode('<br />', $messages);
+                    }
                 }
+
                 throw new ShippingException($error);
             }
 
-            if ($httpCode === 401) { throw new ShippingException('PPL: Unauthorized access'); }
-            if ($httpCode === 500) { throw new ShippingException('PPL: Server Error'); }
-            if ($httpCode === 503) { throw new ShippingException('PPL: Service Unavailable'); }
+            if ($httpCode === 401) {
+                throw new ShippingException('PPL: Unauthorized access');
+            }
+            if ($httpCode === 500) {
+                throw new ShippingException('PPL: Server Error');
+            }
+            if ($httpCode === 503) {
+                throw new ShippingException('PPL: Service Unavailable');
+            }
             throw new ShippingException('PPL: Incorrect response HTTP Code: ' . $httpCode);
         } catch (RequestException $e) {
-            $responseBody = $e->hasResponse() ? (string) $e->getResponse()->getBody() : '';
-            throw new ShippingException('PPL createBatch HTTP ' . ($e->hasResponse() ? $e->getResponse()->getStatusCode() : '?') . ': ' . $e->getMessage() . ' | body: ' . $responseBody);
+            $response = $e->getResponse();
+            $responseBody = '';
+            $statusCode = '?';
+
+            if ($response !== null) {
+                $responseBody = (string) $response->getBody();
+                $statusCode = (string) $response->getStatusCode();
+            }
+
+            throw new ShippingException( 'PPL createBatch HTTP ' . $statusCode . ': ' . $e->getMessage() . ' | body: ' . $responseBody );
         }
     }
 
@@ -136,13 +157,13 @@ class PplApi implements CarrierInterface
         try {
             $response = $this->httpClient->get($url, [
                 'headers' => [
-                    'Authorization' => 'Bearer ' . $this->getToken(),
+                    'Authorization' => 'Bearer ' . $this->token,
                     'Content-Type' => 'text/plain'
                 ]
             ]);
             return $response->getBody()->getContents();
         } catch (ClientException $exception) {
-            $body = (string) $exception->getResponse()->getBody();
+            $body = (string)$exception->getResponse()->getBody();
             throw new ShippingException('PPL getLabel HTTP ' . $exception->getResponse()->getStatusCode() . ': ' . $body);
         }
     }
@@ -153,7 +174,7 @@ class PplApi implements CarrierInterface
             $method = $this->config->url . Method::ShipmentBatch->value . '/' . $batchId;
             $response = $this->httpClient->get($method, [
                 'headers' => [
-                    'Authorization' => 'Bearer ' . $this->getToken(),
+                    'Authorization' => 'Bearer ' . $this->token,
                     'Content-Type' => 'text/plain'
                 ]
             ]);
@@ -163,7 +184,7 @@ class PplApi implements CarrierInterface
             }
             return null;
         } catch (ClientException $exception) {
-            $body = (string) $exception->getResponse()->getBody();
+            $body = (string)$exception->getResponse()->getBody();
             throw new ShippingException('PPL getStatus HTTP ' . $exception->getResponse()->getStatusCode() . ': ' . $body);
         }
     }
@@ -179,7 +200,7 @@ class PplApi implements CarrierInterface
             $method = $this->config->url . Method::Shipment->value . '?' . http_build_query($data);
             $response = $this->httpClient->get($method, [
                 'headers' => [
-                    'Authorization' => 'Bearer ' . $this->getToken(),
+                    'Authorization' => 'Bearer ' . $this->token,
                     'Content-Type' => 'text/plain',
                     'Accept-Language' => 'cs-CZ',
                 ]
@@ -196,62 +217,6 @@ class PplApi implements CarrierInterface
             return null;
         } catch (ClientException $exception) {
             throw new ShippingException('PPL Response error HTTP Code: ' . $exception->getResponse()->getStatusCode());
-        }
-    }
-
-    public function cancelShipment(string $shipmentNumber): bool
-    {
-        try {
-            $url = $this->config->url . Method::Shipment->value . '/' . urlencode($shipmentNumber) . '/cancel';
-            $response = $this->httpClient->post($url, [
-                'headers' => [
-                    'Authorization' => 'Bearer ' . $this->getToken(),
-                    'Accept' => 'application/json',
-                    'Accept-Language' => 'cs-CZ',
-                    'X-Correlation-ID' => 'cancel_' . $shipmentNumber,
-                    'X-LogLevel' => 'Error',
-                ],
-            ]);
-            if ($response->getStatusCode() !== 202) {
-                Debugger::log('PPL Shipment cancel failed. HTTP Code: ' . $response->getStatusCode());
-                return false;
-            }
-            return true;
-        } catch (RequestException $e) {
-            Debugger::log($e);
-            return false;
-        }
-    }
-
-    /**
-     * @return array<array{code: string, name: string}>
-     * @throws GuzzleException
-     */
-    public function getProductCodelist(int $limit = 100, int $offset = 0): array
-    {
-        try {
-            $url = $this->config->url . Method::Product->value . '?' . http_build_query(['Limit' => $limit, 'Offset' => $offset]);
-            $response = $this->httpClient->get($url, [
-                'headers' => [
-                    'Authorization' => 'Bearer ' . $this->getToken(),
-                    'Accept' => 'application/json',
-                    'Accept-Language' => 'cs-CZ',
-                ]
-            ]);
-            $statusCode = $response->getStatusCode();
-            if ($statusCode === 200) {
-                $data = json_decode($response->getBody()->getContents(), true);
-                if (json_last_error() !== JSON_ERROR_NONE) {
-                    throw new ShippingException('PPL: Response JSON Error');
-                }
-                return is_array($data) ? $data : [];
-            }
-            if ($statusCode === 400) { throw new ShippingException('PPL: Bad Request'); }
-            if ($statusCode === 500) { throw new ShippingException('PPL: Server Error'); }
-            if ($statusCode === 503) { throw new ShippingException('PPL: Service Unavailable'); }
-            throw new ShippingException('PPL: Incorrect response HTTP Code: ' . $statusCode);
-        } catch (RequestException $e) {
-            throw new ShippingException('PPL Guzzle error: ' . $e->getMessage());
         }
     }
 

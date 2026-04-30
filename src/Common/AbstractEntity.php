@@ -1,6 +1,8 @@
 <?php
 
-namespace Ages\ShippingGateway\Ppl\Entity;
+declare(strict_types=1);
+
+namespace Ages\ShippingGateway\Common;
 
 abstract class AbstractEntity
 {

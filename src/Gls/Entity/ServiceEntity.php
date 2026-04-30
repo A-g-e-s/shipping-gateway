@@ -2,6 +2,7 @@
 
 namespace Ages\ShippingGateway\Gls\Entity;
 
+use Ages\ShippingGateway\Common\AbstractEntity;
 use Ages\ShippingGateway\Gls\Values\ServiceCode;
 
 class ServiceEntity extends AbstractEntity
@@ -9,7 +10,7 @@ class ServiceEntity extends AbstractEntity
     /**
      * @var ServiceCode[]
      */
-    private array $services = [];
+    public array $services = [];
     private string $psdReference;
     private string $codVariableSymbol;
     private string $codCurrencyIso;
@@ -80,11 +81,4 @@ class ServiceEntity extends AbstractEntity
         return $s;
     }
 
-    /**
-     * @return ServiceCode[]
-     */
-    public function getServices(): array
-    {
-        return $this->services;
-    }
 }

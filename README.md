@@ -1,7 +1,18 @@
 # ages/shipping-gateway
 
-Unified PHP library for shipping carrier integrations — **GLS**, **PPL**, **Czech Post**.  
+Unified PHP library for shipping carrier integrations — **GLS**, **PPL**, **Czech Post**, **Gebrüder Weiss**.  
 Single entry point, config-driven credentials and pickup address, compatible with Nette + Nextras.
+
+---
+
+## API Documentation
+
+| Dopravce | Odkaz |
+|---|---|
+| GLS | https://api.mygls.hu/index_cz.html |
+| PPL | https://ppl-cpl-api.apidog.io/ |
+| Česká pošta | https://www.postaonline.cz/dokumentaceapi/b2b/ |
+| Gebrüder Weiss | https://developer.my.gw-world.com/#/apis |
 
 ---
 
@@ -79,6 +90,17 @@ services:
         locationNumber: 1
         certificatePath: %wwwDir%/cert/postsignum-bundle.pem
         # packageLimit: 5
+    )
+
+    gwConfig: Ages\ShippingGateway\GebruderWeiss\Config\GebruderWeissConfig(
+        clientId: CLIENT_ID
+        clientSecret: CLIENT_SECRET
+        customerId: 12345
+        branchCode: PRG
+        pickupAddress: @pickupAddress
+        # product: GW_PRO_LINE
+        # incoterm: DAP
+        # goodsDescription: Goods
     )
 
     - Ages\ShippingGateway\ShippingGateway
@@ -177,9 +199,9 @@ new Parcel(weight: 40.0, type: ParcelType::PalletCustom);        // vlastní pal
 new Parcel(weight: 5.0, dimensions: new Dimensions(60, 40, 30));
 ```
 
-> GLS a PPL nepodporují paletové typy — handler vyhodí `InvalidArgumentException`.  
-> Česká pošta nepodporuje ani `PalletEur` ani ostatní palety.  
-> Paletová přeprava je připravena pro **Gebrüder Weiss** (implementace bude doplněna).
+> Palety jsou podporovány **pouze přes Gebrüder Weiss**.  
+> GLS a PPL paletové typy nepodporují — handler vyhodí `InvalidArgumentException`.  
+> Česká pošta podporuje `Package` a `PackageOversize` (neskladná zásilka, služba 10), palety nepodporuje.
 
 ---
 
@@ -226,19 +248,9 @@ if ($tracking !== null) {
 }
 ```
 
-> Gebrüder Weiss nepodporuje tracking — vyhodí `LogicException`.
+> Gebrüder Weiss nepodporuje tracking — metoda vrátí `null`.
 
 ---
-
-### Direct API access
-
-Pokud potřebuješ přímý přístup na metody konkrétního dopravce:
-
-```php
-$gateway->gls();        // Ages\ShippingGateway\Gls\GlsApi
-$gateway->ppl();        // Ages\ShippingGateway\Ppl\PplApi
-$gateway->czechPost();  // Ages\ShippingGateway\CzechPost\CzechPostApi
-```
 
 ---
 
@@ -318,7 +330,6 @@ class Ppl extends PplApi
 namespace App\Api\CzechPost;
 
 use Ages\ShippingGateway\CzechPost\CzechPostApi;
-use Ages\ShippingGateway\CzechPost\ErrorCodes;
 
 class CzechPost extends CzechPostApi
 {
@@ -374,11 +385,12 @@ src/
 │   ├── Config/CzechPostConfig.php
 │   ├── CzechPostApi.php
 │   ├── CzechPostException.php
-│   ├── ErrorCodes.php
 │   ├── Handler/CzechPostShipmentHandler.php
 │   └── Entity/ Values/
 └── GebruderWeiss/
-    └── Handler/GebruderWeissShipmentHandler.php  ← stub, NotImplementedException
+    ├── Config/GebruderWeissConfig.php
+    ├── GebruderWeissApi.php
+    └── Handler/GebruderWeissShipmentHandler.php
 ```
 
 **Co je v balíčku:** HTTP komunikace, entity, config, unified tracking, unified shipment creation.  
