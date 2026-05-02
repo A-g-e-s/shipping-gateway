@@ -68,14 +68,14 @@ class GlsShipmentHandler extends GlsApi implements ShipmentHandlerInterface
     {
         $r = $request->recipient;
         return AddressEntity::of(
-            $r->fullName(),
+            $r->company ?? $r->fullName(),
             $r->street,
             $r->city,
             $r->zip,
             $r->country,
             $r->houseNumber,
             null,
-            $r->company,
+            $r->fullName(),
             $r->phone,
             $r->email,
         );

@@ -154,6 +154,10 @@ class PplApi implements CarrierInterface
 
     public function getLabel(string $url): string
     {
+        if (!preg_match('~^https?://~i', $url)) {
+            $url = rtrim($this->config->url, '/') . '/' . ltrim($url, '/');
+        }
+
         try {
             $response = $this->httpClient->get($url, [
                 'headers' => [
