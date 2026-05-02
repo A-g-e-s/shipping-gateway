@@ -41,7 +41,7 @@ class CzechPostShipmentHandler extends CzechPostApi implements ShipmentHandlerIn
         $services = $this->buildServices($request);
 
         $firstRef = $total > 1 ? $request->reference . '-1' : $request->reference;
-        $firstParams = $this->buildParams($parcels[0], $firstRef, $request, $total > 1 ? [1, $total] : null);
+        $firstParams = $this->buildParams($parcels[0], $firstRef, $request, $total > 1 ? [1, $total] : null, $request->parcelShopCode !== null);
 
         if ($parcels[0]->type === ParcelType::PackageOversize) {
             $services->addService(ServiceCode::BulkyParcel);
@@ -77,11 +77,11 @@ class CzechPostShipmentHandler extends CzechPostApi implements ShipmentHandlerIn
         return $this->parseResponse($response);
     }
 
-    private function buildParams(Parcel $parcel, string $recordId, ShipmentRequest $request, ?array $multipart): ParcelParamsEntity
+    private function buildParams(Parcel $parcel, string $recordId, ShipmentRequest $request, ?array $multipart, bool $isPsd = false): ParcelParamsEntity
     {
         $params = ParcelParamsEntity::of(
             $recordId,
-            $this->prefixCode($parcel),
+            $this->prefixCode($parcel, $isPsd),
             $parcel->weight,
             $request->value->amount,
             $request->note,
@@ -105,13 +105,11 @@ class CzechPostShipmentHandler extends CzechPostApi implements ShipmentHandlerIn
             ? ParcelAddressSubject::Company
             : ParcelAddressSubject::Person;
 
-        $address = AddressEntity::of(
-            $r->street,
-            $r->city,
-            $r->zip,
-            $r->country,
-            $r->houseNumber,
-        );
+        if ($request->parcelShopCode !== null) {
+            $address = AddressEntity::of('Balíkovna', $r->city, $r->zip, $r->country);
+        } else {
+            $address = AddressEntity::of($r->street, $r->city, $r->zip, $r->country, $r->houseNumber);
+        }
 
         return ParcelAddressEntity::of(
             $subject,
@@ -139,10 +137,10 @@ class CzechPostShipmentHandler extends CzechPostApi implements ShipmentHandlerIn
         return $services;
     }
 
-    private function prefixCode(Parcel $parcel): PrefixParcelCode
+    private function prefixCode(Parcel $parcel, bool $isPsd = false): PrefixParcelCode
     {
         return match ($parcel->type) {
-            ParcelType::Package         => PrefixParcelCode::Package,
+            ParcelType::Package         => $isPsd ? PrefixParcelCode::Psd : PrefixParcelCode::Package,
             ParcelType::PackageOversize => PrefixParcelCode::PackageOversize,
             default                     => throw new \InvalidArgumentException('Czech Post does not support pallet shipments'),
         };
