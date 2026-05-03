@@ -180,7 +180,7 @@ class GlsApi implements CarrierInterface
                 'verify' => true,
             ]);
             if ($response->getStatusCode() !== 200) {
-                throw new ShippingException('GLS: HTTP ' . $response->getStatusCode());
+                throw new ShippingException('GLS: HTTP ' . $response->getStatusCode() . ': ' . (string) $response->getBody());
             }
             $body = $response->getBody();
             $text = $body->getContents();

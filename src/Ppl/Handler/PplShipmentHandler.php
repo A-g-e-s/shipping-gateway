@@ -71,9 +71,11 @@ class PplShipmentHandler extends PplApi implements ShipmentHandlerInterface
     {
         $trackingNumber = $status->items[0]->shipmentNumber ?? $fallbackRef;
 
-        $labelUrl = $status->completeLabel?->labelUrls[0] ?? null;
+        $labelUrl = $status->items[0]->labelUrl
+            ?? $status->completeLabel?->labelUrls[0]
+            ?? null;
         if ($labelUrl === null) {
-            throw new ShippingException('PPL: label URL not found in batch response (completeLabel.labelUrls[0])');
+            throw new ShippingException('PPL: label URL not found in batch response (items[0].labelUrl / completeLabel.labelUrls[0])');
         }
 
         return [(string) $trackingNumber, $this->getLabel((string) $labelUrl)];

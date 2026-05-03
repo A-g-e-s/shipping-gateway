@@ -169,6 +169,8 @@ class PplApi implements CarrierInterface
         } catch (ClientException $exception) {
             $body = (string)$exception->getResponse()->getBody();
             throw new ShippingException('PPL getLabel HTTP ' . $exception->getResponse()->getStatusCode() . ': ' . $body);
+        } catch (RequestException $exception) {
+            throw new ShippingException('PPL getLabel request error: ' . $exception->getMessage(), 0, $exception);
         }
     }
 
@@ -183,13 +185,28 @@ class PplApi implements CarrierInterface
                 ]
             ]);
             $response = json_decode($response->getBody()->getContents());
-            if ($response instanceof \stdClass && $response->items[0]->importState === 'Complete') {
+
+            if (!$response instanceof \stdClass || !isset($response->items) || !is_array($response->items) || !isset($response->items[0]) || !$response->items[0] instanceof \stdClass) {
+                throw new ShippingException('PPL: invalid batch status response');
+            }
+
+            $item = $response->items[0];
+            $importState = $item->importState ?? null;
+
+            if ($importState === 'Complete') {
                 return $response;
             }
+
+            if ($importState === 'Error') {
+                throw new ShippingException('PPL: batch processing failed for batch ' . $batchId);
+            }
+
             return null;
         } catch (ClientException $exception) {
             $body = (string)$exception->getResponse()->getBody();
             throw new ShippingException('PPL getStatus HTTP ' . $exception->getResponse()->getStatusCode() . ': ' . $body);
+        } catch (RequestException $exception) {
+            throw new ShippingException('PPL getStatus request error: ' . $exception->getMessage(), 0, $exception);
         }
     }
 
@@ -221,6 +238,8 @@ class PplApi implements CarrierInterface
             return null;
         } catch (ClientException $exception) {
             throw new ShippingException('PPL Response error HTTP Code: ' . $exception->getResponse()->getStatusCode());
+        } catch (RequestException $exception) {
+            throw new ShippingException('PPL tracking request error: ' . $exception->getMessage(), 0, $exception);
         }
     }
 

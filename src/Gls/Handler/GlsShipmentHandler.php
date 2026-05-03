@@ -55,6 +55,9 @@ class GlsShipmentHandler extends GlsApi implements ShipmentHandlerInterface
                 ));
                 throw new UnexpectedValueException('GLS: ' . $errors);
             }
+            if (!isset($data->Labels) || !is_array($data->Labels) || $data->Labels === []) {
+                throw new UnexpectedValueException('GLS: label data missing in PrintLabels response');
+            }
 
             $parcelNumber = $data->PrintLabelsInfoList[0]->ParcelNumber ?? $ref;
             $labelPdf = implode(array_map('chr', $data->Labels));

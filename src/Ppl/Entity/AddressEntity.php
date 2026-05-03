@@ -48,24 +48,40 @@ class AddressEntity extends AbstractEntity
     public function toArray(): array
     {
         $e = [
-            'name' => $this->name,
-            'street' => $this->street,
-            'city' => $this->city,
+            'name' => self::sanitizeAscii($this->name),
+            'street' => self::sanitizeAscii($this->street),
+            'city' => self::sanitizeAscii($this->city),
             'zipCode' => $this->zipCode,
             'country' => Strings::upper($this->countryIsoCode),
         ];
         if ($this->contactName !== null) {
-            $e['contact'] = $this->contactName;
+            $e['contact'] = self::sanitizeAscii($this->contactName);
         }
         if ($this->contactPhone !== null) {
             $e['phone'] = $this->contactPhone;
         }
         if ($this->houseNumberInfo !== null) {
-            $e['name2'] = $this->houseNumberInfo;
+            $e['name2'] = self::sanitizeAscii($this->houseNumberInfo);
         }
         if ($this->contactEmail !== null) {
             $e['email'] = $this->contactEmail;
         }
         return $e;
+    }
+
+    private static function sanitizeAscii(string $value): string
+    {
+        $sanitized = $value;
+        if (function_exists('iconv')) {
+            $converted = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value);
+            if (is_string($converted)) {
+                $sanitized = $converted;
+            }
+        }
+
+        $sanitized = preg_replace('/[^\x20-\x7E]/', '', $sanitized) ?? $sanitized;
+        $sanitized = preg_replace('/\s+/', ' ', $sanitized) ?? $sanitized;
+
+        return trim($sanitized);
     }
 }

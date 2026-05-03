@@ -35,6 +35,9 @@ class CzechPostShipmentHandler extends CzechPostApi implements ShipmentHandlerIn
     {
         $parcels = array_values($request->parcels);
         $total = count($parcels);
+        if ($total === 0) {
+            throw new \InvalidArgumentException('Czech Post shipment requires at least one parcel');
+        }
 
         $header = $this->prepareParcelServiceHeader();
         $address = $this->buildAddress($request);
@@ -106,7 +109,7 @@ class CzechPostShipmentHandler extends CzechPostApi implements ShipmentHandlerIn
             : ParcelAddressSubject::Person;
 
         if ($request->parcelShopCode !== null) {
-            $address = AddressEntity::of('Balíkovna', $r->city, $r->zip, $r->country);
+            $address = AddressEntity::of('Balikovna', $r->city, $r->zip, $r->country);
         } else {
             $address = AddressEntity::of($r->street, $r->city, $r->zip, $r->country, $r->houseNumber);
         }
@@ -168,7 +171,11 @@ class CzechPostShipmentHandler extends CzechPostApi implements ShipmentHandlerIn
             throw new CzechPostException('Czech Post: ' . $msg, (int) $responseCode);
         }
 
-        $labelPdf = base64_decode((string) ($header['responsePrintParams']['file'] ?? ''));
+        $labelPdf = base64_decode((string) ($header['responsePrintParams']['file'] ?? ''), true);
+        if (!is_string($labelPdf) || $labelPdf === '') {
+            throw new CzechPostException('Czech Post: invalid label PDF in response');
+        }
+
         $parcelData = $header['resultParcelData'] ?? [];
         if (!is_array($parcelData) || count($parcelData) === 0) {
             throw new CzechPostException('Czech Post: no parcel data in response');
