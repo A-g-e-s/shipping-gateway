@@ -8,6 +8,8 @@ use Ages\ShippingGateway\Common\CarrierInterface;
 use Ages\ShippingGateway\Common\ParcelTrackingInterface;
 use Ages\ShippingGateway\Common\ShippingException;
 use Ages\ShippingGateway\GebruderWeiss\Config\GebruderWeissConfig;
+use Ages\ShippingGateway\GebruderWeiss\Tracking\GbwParcelStatus;
+use Ages\ShippingGateway\GebruderWeiss\Tracking\GbwParcelTracking;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\RequestException;
 
@@ -18,34 +20,48 @@ class GebruderWeissApi implements CarrierInterface
             if ($this->token !== null) {
                 return $this->token;
             }
-
-            try {
-                $response = $this->httpClient->post($this->config->oauthUrl, [
-                    'form_params' => [
-                        'grant_type' => 'client_credentials',
-                        'client_id' => $this->config->clientId,
-                        'client_secret' => $this->config->clientSecret,
-                        'scope' => 'API_CUSAPI_TRANSPORT_ORDER_CREATE',
-                    ],
-                ]);
-
-                $data = json_decode((string)$response->getBody(), true);
-
-                if (!is_array($data) || !isset($data['access_token']) || !is_string($data['access_token'])) {
-                    throw new ShippingException('GBW: Token was not created');
-                }
-
-                return $this->token = $data['access_token'];
-            } catch (RequestException $e) {
-                throw new ShippingException('GBW auth error: ' . $e->getMessage());
-            }
+            return $this->token = $this->fetchToken('API_CUSAPI_TRANSPORT_ORDER_CREATE');
         }
     }
+
+    private ?string $trackingToken = null {
+        get {
+            if ($this->trackingToken !== null) {
+                return $this->trackingToken;
+            }
+            return $this->trackingToken = $this->fetchToken('API_CUSTNT_PACKAGES_STATUS_READ');
+        }
+    }
+
     private Client $httpClient;
 
     public function __construct(protected readonly GebruderWeissConfig $config)
     {
         $this->httpClient = new Client();
+    }
+
+    private function fetchToken(string $scope): string
+    {
+        try {
+            $response = $this->httpClient->post($this->config->oauthUrl, [
+                'form_params' => [
+                    'grant_type' => 'client_credentials',
+                    'client_id' => $this->config->clientId,
+                    'client_secret' => $this->config->clientSecret,
+                    'scope' => $scope,
+                ],
+            ]);
+
+            $data = json_decode((string) $response->getBody(), true);
+
+            if (!is_array($data) || !isset($data['access_token']) || !is_string($data['access_token'])) {
+                throw new ShippingException('GBW: Token was not created');
+            }
+
+            return $data['access_token'];
+        } catch (RequestException $e) {
+            throw new ShippingException('GBW auth error: ' . $e->getMessage());
+        }
     }
 
     /**
@@ -87,6 +103,53 @@ class GebruderWeissApi implements CarrierInterface
 
     public function getParcelTracking(string $consignmentId): ?ParcelTrackingInterface
     {
-        return null;
+        try {
+            $response = $this->httpClient->get(
+                $this->config->trackingUrl . '/packages/' . urlencode($consignmentId) . '/current-status',
+                [
+                    'headers' => [
+                        'Authorization' => 'Bearer ' . $this->trackingToken,
+                        'Accept' => 'application/json',
+                        'accept-language' => 'en-US',
+                    ],
+                    'http_errors' => false,
+                ]
+            );
+
+            $status = $response->getStatusCode();
+
+            if ($status === 404) {
+                return null;
+            }
+
+            if ($status !== 200) {
+                throw new ShippingException('GBW tracking: HTTP ' . $status);
+            }
+
+            $data = json_decode((string) $response->getBody(), true);
+
+            if (!is_array($data)) {
+                throw new ShippingException('GBW tracking: Invalid response');
+            }
+
+            return $this->parseTrackingResponse($consignmentId, $data);
+        } catch (RequestException $e) {
+            throw new ShippingException('GBW tracking error: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     */
+    private function parseTrackingResponse(string $barcode, array $data): GbwParcelTracking
+    {
+        $tracking = GbwParcelTracking::of($barcode);
+
+        $statusCurrent = $data['statusCurrent'] ?? null;
+        if (is_array($statusCurrent)) {
+            $tracking->addStatus(GbwParcelStatus::of($statusCurrent));
+        }
+
+        return $tracking;
     }
 }

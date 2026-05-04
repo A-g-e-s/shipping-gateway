@@ -14,11 +14,14 @@ readonly class GebruderWeissConfig
         public int $customerId,
         public string $branchCode,
         public PickupAddress $pickupAddress,
+        public string $ssccPrefix,
         public string $product = 'GW_PRO_LINE',
         public string $incoterm = 'DAP',
         public string $goodsDescription = 'Goods',
+        public ?string $logoPath = null,
         public string $apiUrl = 'https://my.api.gw-world.com/transport/transport-order/2.0.0',
         public string $oauthUrl = 'https://my.api.gw-world.com/token',
+        public string $trackingUrl = 'https://my.api.gw-world.com/common/trackntrace/1.1.0',
     ) {
     }
 }

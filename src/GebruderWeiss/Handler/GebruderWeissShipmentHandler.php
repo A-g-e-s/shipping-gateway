@@ -11,10 +11,20 @@ use Ages\ShippingGateway\Common\Shipment\Parcel;
 use Ages\ShippingGateway\Common\Shipment\ParcelType;
 use Ages\ShippingGateway\Common\Shipment\ShipmentLabel;
 use Ages\ShippingGateway\Common\Shipment\ShipmentRequest;
+use Ages\ShippingGateway\GebruderWeiss\Config\GebruderWeissConfig;
 use Ages\ShippingGateway\GebruderWeiss\GebruderWeissApi;
+use Ages\ShippingGateway\GebruderWeiss\Label\GebruderWeissLabelGenerator;
 
 class GebruderWeissShipmentHandler extends GebruderWeissApi implements ShipmentHandlerInterface
 {
+    private GebruderWeissLabelGenerator $labelGenerator;
+
+    public function __construct(GebruderWeissConfig $config)
+    {
+        parent::__construct($config);
+        $this->labelGenerator = new GebruderWeissLabelGenerator($config);
+    }
+
     public function getCarrier(): Carrier
     {
         return Carrier::GebruderWeiss;
@@ -22,14 +32,56 @@ class GebruderWeissShipmentHandler extends GebruderWeissApi implements ShipmentH
 
     public function createShipment(ShipmentRequest $request): array
     {
-        $this->createTransportOrder($this->buildPayload($request));
-        return [new ShipmentLabel(Carrier::GebruderWeiss, $request->reference, '')];
+        $ssccCodes = $this->generateSsccCodes($request);
+        $this->createTransportOrder($this->buildPayload($request, $ssccCodes));
+        $labelPdfs = $this->labelGenerator->generateLabels($request, $ssccCodes);
+
+        $labels = [];
+        foreach ($ssccCodes as $index => $sscc) {
+            $labels[] = new ShipmentLabel(Carrier::GebruderWeiss, $sscc, $labelPdfs[$index]);
+        }
+        return $labels;
     }
 
     /**
+     * @return string[]
+     */
+    private function generateSsccCodes(ShipmentRequest $request): array
+    {
+        $codes = [];
+        foreach (array_keys($request->parcels) as $index) {
+            $codes[$index] = $this->generateSscc($request->reference, $index);
+        }
+        return $codes;
+    }
+
+    private function generateSscc(string $reference, int $parcelIndex): string
+    {
+        $prefix = substr($this->config->ssccPrefix, 0, 16);
+        $available = 17 - strlen($prefix);
+
+        $hash = sprintf('%013d', abs(crc32($reference . '|' . $parcelIndex)) % 10_000_000_000_000);
+        $data = str_pad(substr($prefix . $hash, 0, 17), 17, '0');
+
+        return $data . $this->gs1CheckDigit($data);
+    }
+
+    private function gs1CheckDigit(string $digits): string
+    {
+        $sum = 0;
+        $len = strlen($digits);
+        for ($i = 0; $i < $len; $i++) {
+            $digit = (int) $digits[$len - 1 - $i];
+            $sum += ($i % 2 === 0) ? $digit * 3 : $digit;
+        }
+        return (string) ((10 - ($sum % 10)) % 10);
+    }
+
+    /**
+     * @param string[] $ssccCodes
      * @return array<string, mixed>
      */
-    private function buildPayload(ShipmentRequest $request): array
+    private function buildPayload(ShipmentRequest $request, array $ssccCodes): array
     {
         $order = [
             'customerId' => $this->config->customerId,
@@ -40,7 +92,11 @@ class GebruderWeissShipmentHandler extends GebruderWeissApi implements ShipmentH
                 $this->buildConsigneeAddress($request),
             ],
             'transportRequirements' => $this->buildTransportRequirements($request),
-            'goodsItems' => array_values(array_map([$this, 'buildGoodsItem'], $request->parcels)),
+            'goodsItems' => array_map(
+                fn(Parcel $parcel, int $index) => $this->buildGoodsItem($parcel, $ssccCodes[$index]),
+                $request->parcels,
+                array_keys($request->parcels),
+            ),
         ];
 
         if ($request->cod !== null) {
@@ -129,13 +185,38 @@ class GebruderWeissShipmentHandler extends GebruderWeissApi implements ShipmentH
     /**
      * @return array<string, mixed>
      */
-    private function buildGoodsItem(Parcel $parcel): array
+    private function buildGoodsItem(Parcel $parcel, string $sscc): array
     {
+        $packItem = [
+            'barcode' => [
+                'barcodeType' => 'SSCC',
+                'barcode' => $sscc,
+            ],
+            'measurements' => [
+                [
+                    'measureQualifier' => 'GROSS_WEIGHT',
+                    'measureUnit' => 'KGM',
+                    'measure' => (int) round($parcel->weight),
+                ],
+            ],
+        ];
+
+        if ($parcel->dimensions !== null) {
+            $d = $parcel->dimensions;
+            $packItem['dimension'] = [
+                'length' => round($d->length / 1000, 4),
+                'width' => round($d->width / 1000, 4),
+                'height' => round($d->height / 1000, 4),
+                'dimensionUnit' => 'MTR',
+            ];
+        }
+
         return [
             'quantity' => 1,
             'packageType' => $this->getPackageTypeCode($parcel->type),
             'description' => $this->config->goodsDescription,
             'stackable' => false,
+            'packItems' => [$packItem],
             'measurements' => [
                 [
                     'measureQualifier' => 'GROSS_WEIGHT',
