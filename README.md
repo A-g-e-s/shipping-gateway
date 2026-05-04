@@ -219,7 +219,7 @@ file_put_contents('/path/to/' . $label->trackingNumber . '.pdf', $label->labelPd
 $tracking = $gateway->tracking($label->carrier, $label->trackingNumber);
 ```
 
-> **Česká pošta — více balíků:** API vrátí jeden kombinovaný PDF soubor pro všechny balíky.  
+> **Více balíků:** API vrátí jeden kombinovaný PDF soubor pro všechny balíky.  
 > Každý `ShipmentLabel` dostane svůj `trackingNumber`, ale `labelPdf` je u všech shodné (kombinovaný tisk).
 
 ---

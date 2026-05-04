@@ -36,16 +36,13 @@ class PplShipmentHandler extends PplApi implements ShipmentHandlerInterface
         $cod = $this->buildCod($request);
         $specific = SpecificDeliveryEntity::of($request->parcelShopCode);
         $count = count($request->parcels);
+        $entity = ParcelEntity::of($request->reference, $count, $pickup, $delivery, $specific, $cod);
 
-        foreach ($request->parcels as $i => $parcel) {
-            $ref = $count > 1 ? $request->reference . '-' . ($i + 1) : $request->reference;
+        $batchId = $this->createBatch($entity);
+        $status = $this->waitForBatch($batchId);
+        $labelPdf = $this->extractLabelPdf($status);
 
-            $entity = ParcelEntity::of($ref, 1, $pickup, $delivery, $specific, $cod);
-
-            $batchId = $this->createBatch($entity);
-            $status = $this->waitForBatch($batchId);
-
-            [$trackingNumber, $labelPdf] = $this->extractFromStatus($status, $ref);
+        foreach ($this->extractTrackingNumbers($status, $request->reference) as $trackingNumber) {
             $labels[] = new ShipmentLabel(Carrier::Ppl, $trackingNumber, $labelPdf);
         }
 
@@ -65,20 +62,39 @@ class PplShipmentHandler extends PplApi implements ShipmentHandlerInterface
     }
 
     /**
-     * @return array{0: string, 1: string}
+     * @return string[]
      */
-    private function extractFromStatus(\stdClass $status, string $fallbackRef): array
+    private function extractTrackingNumbers(\stdClass $status, string $fallbackRef): array
     {
-        $trackingNumber = $status->items[0]->shipmentNumber ?? $fallbackRef;
-
-        $labelUrl = $status->items[0]->labelUrl
-            ?? $status->completeLabel?->labelUrls[0]
-            ?? null;
-        if ($labelUrl === null) {
-            throw new ShippingException('PPL: label URL not found in batch response (items[0].labelUrl / completeLabel.labelUrls[0])');
+        if (!isset($status->items) || !is_array($status->items) || $status->items === []) {
+            throw new ShippingException('PPL: batch response does not contain any shipments');
         }
 
-        return [(string) $trackingNumber, $this->getLabel((string) $labelUrl)];
+        $trackingNumbers = [];
+        foreach ($status->items as $item) {
+            if (!$item instanceof \stdClass) {
+                continue;
+            }
+            $trackingNumbers[] = (string) ($item->shipmentNumber ?? $fallbackRef);
+        }
+
+        if ($trackingNumbers === []) {
+            throw new ShippingException('PPL: shipment numbers not found in batch response');
+        }
+
+        return $trackingNumbers;
+    }
+
+    private function extractLabelPdf(\stdClass $status): string
+    {
+        $labelUrl = $status->completeLabel?->labelUrls[0]
+            ?? $status->items[0]?->labelUrl
+            ?? null;
+        if ($labelUrl === null) {
+            throw new ShippingException('PPL: label URL not found in batch response (completeLabel.labelUrls[0] / items[0].labelUrl)');
+        }
+
+        return $this->getLabel((string) $labelUrl);
     }
 
     private function buildDelivery(ShipmentRequest $request): AddressEntity

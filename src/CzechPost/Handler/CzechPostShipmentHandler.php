@@ -13,6 +13,7 @@ use Ages\ShippingGateway\Common\Shipment\ShipmentLabel;
 use Ages\ShippingGateway\Common\Shipment\ShipmentRequest;
 use Ages\ShippingGateway\CzechPost\CzechPostApi;
 use Ages\ShippingGateway\CzechPost\CzechPostException;
+use Ages\ShippingGateway\CzechPost\ErrorCodes;
 use Ages\ShippingGateway\CzechPost\Entity\AddParcelDataEntity;
 use Ages\ShippingGateway\CzechPost\Entity\AddressEntity;
 use Ages\ShippingGateway\CzechPost\Entity\ConsignmentEntity;
@@ -109,7 +110,17 @@ class CzechPostShipmentHandler extends CzechPostApi implements ShipmentHandlerIn
             : ParcelAddressSubject::Person;
 
         if ($request->parcelShopCode !== null) {
-            $address = AddressEntity::of('Balikovna', $r->city, $r->zip, $r->country);
+            $address = AddressEntity::of(
+                'Balikovna',
+                $r->city,
+                $this->normalizeParcelShopZip($request->parcelShopCode, $r->zip),
+                $r->country,
+                null,
+                null,
+                null,
+                null,
+                $request->parcelShopCode,
+            );
         } else {
             $address = AddressEntity::of($r->street, $r->city, $r->zip, $r->country, $r->houseNumber);
         }
@@ -167,8 +178,15 @@ class CzechPostShipmentHandler extends CzechPostApi implements ShipmentHandlerIn
 
         $responseCode = $header['resultHeader']['responseCode'] ?? null;
         if ($responseCode !== 1) {
-            $msg = sprintf('responseCode %s', $responseCode ?? 'null');
-            throw new CzechPostException('Czech Post: ' . $msg, (int) $responseCode);
+            $code = (int) $responseCode;
+            $msg = $responseCode === null
+                ? 'responseCode null'
+                : ErrorCodes::getErrorMsg($code);
+            $details = $this->extractErrorDetails($header);
+            if ($details !== []) {
+                $msg .= ' | ' . implode('; ', $details);
+            }
+            throw new CzechPostException('Czech Post: ' . $msg, $code, $header);
         }
 
         $labelPdf = base64_decode((string) ($header['responsePrintParams']['file'] ?? ''), true);
@@ -188,5 +206,45 @@ class CzechPostShipmentHandler extends CzechPostApi implements ShipmentHandlerIn
         }
 
         return $labels;
+    }
+
+    /**
+     * @param array<string, mixed> $header
+     * @return string[]
+     */
+    private function extractErrorDetails(array $header): array
+    {
+        $details = [];
+        $parcelData = $header['resultParcelData'] ?? null;
+        if (!is_array($parcelData)) {
+            return $details;
+        }
+
+        foreach ($parcelData as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $responseCode = $item['responseCode'] ?? $item['errorCode'] ?? null;
+            if (!is_numeric($responseCode)) {
+                continue;
+            }
+
+            $context = (string) ($item['recordID'] ?? $item['recordNumber'] ?? $item['parcelCode'] ?? '');
+            $message = ErrorCodes::getErrorMsg((int) $responseCode);
+            $details[] = $context !== '' ? $context . ': ' . $message : $message;
+        }
+
+        return array_values(array_unique($details));
+    }
+
+    private function normalizeParcelShopZip(string $parcelShopCode, string $fallbackZip): string
+    {
+        $digits = preg_replace('~\D+~', '', $parcelShopCode);
+        if (is_string($digits) && $digits !== '') {
+            return $digits;
+        }
+
+        return $fallbackZip;
     }
 }

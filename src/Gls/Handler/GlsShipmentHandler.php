@@ -35,32 +35,33 @@ class GlsShipmentHandler extends GlsApi implements ShipmentHandlerInterface
         $services = $this->buildServices($request);
         $count = count($request->parcels);
 
-        foreach ($request->parcels as $i => $parcel) {
-            $ref = $count > 1 ? $request->reference . '-' . ($i + 1) : $request->reference;
+        $entity = ParcelEntity::of(
+            (string) $this->config->clientNumber,
+            $request->reference,
+            $count,
+            $pickup,
+            $delivery,
+            $services,
+        );
 
-            $entity = ParcelEntity::of(
-                (string) $this->config->clientNumber,
-                $ref,
-                1,
-                $pickup,
-                $delivery,
-                $services,
-            );
+        $data = $this->printLabels($entity);
+        if (!empty($data->PrintLabelsErrorList)) {
+            $errors = implode(', ', array_map(
+                fn($e) => sprintf('%s (%s)', $e->ErrorCode, $e->ErrorDescription),
+                $data->PrintLabelsErrorList,
+            ));
+            throw new UnexpectedValueException('GLS: ' . $errors);
+        }
+        if (!isset($data->Labels) || !is_array($data->Labels) || $data->Labels === []) {
+            throw new UnexpectedValueException('GLS: label data missing in PrintLabels response');
+        }
+        if (!isset($data->PrintLabelsInfoList) || !is_array($data->PrintLabelsInfoList) || $data->PrintLabelsInfoList === []) {
+            throw new UnexpectedValueException('GLS: parcel info missing in PrintLabels response');
+        }
 
-            $data = $this->printLabels($entity);
-            if (!empty($data->PrintLabelsErrorList)) {
-                $errors = implode(', ', array_map(
-                    fn($e) => sprintf('%s (%s)', $e->ErrorCode, $e->ErrorDescription),
-                    $data->PrintLabelsErrorList,
-                ));
-                throw new UnexpectedValueException('GLS: ' . $errors);
-            }
-            if (!isset($data->Labels) || !is_array($data->Labels) || $data->Labels === []) {
-                throw new UnexpectedValueException('GLS: label data missing in PrintLabels response');
-            }
-
-            $parcelNumber = $data->PrintLabelsInfoList[0]->ParcelNumber ?? $ref;
-            $labelPdf = implode(array_map('chr', $data->Labels));
+        $labelPdf = implode(array_map('chr', $data->Labels));
+        foreach ($data->PrintLabelsInfoList as $index => $info) {
+            $parcelNumber = $info->ParcelNumber ?? ($request->reference . '-' . ($index + 1));
             $labels[] = new ShipmentLabel(Carrier::Gls, (string) $parcelNumber, $labelPdf);
         }
 
