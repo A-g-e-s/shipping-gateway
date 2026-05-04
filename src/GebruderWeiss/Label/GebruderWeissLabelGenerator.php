@@ -195,9 +195,9 @@ table { width: 100%; border-collapse: collapse; }
   <!-- Row 7: Barcode — 35mm (or 30mm with COD) -->
   <tr style="height:{$barcodeRowHeight};">
     <td style="text-align:center; vertical-align:middle; padding:2mm 4mm;">
-      <barcode code="{$sscc}" type="C128C" height="2" size="1" text="0" />
+      <barcode code="00{$sscc}" type="C128C" height="2" size="1" text="0" />
       <br>
-      <span style="font-size:6.5pt;">{$this->esc($sscc)}</span>
+      <span style="font-size:6.5pt;">SSCC/NVE (00){$this->esc($sscc)}</span>
     </td>
   </tr>
 
