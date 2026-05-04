@@ -204,9 +204,9 @@ class GebruderWeissShipmentHandler extends GebruderWeissApi implements ShipmentH
         if ($parcel->dimensions !== null) {
             $d = $parcel->dimensions;
             $packItem['dimension'] = [
-                'length' => round($d->length / 1000, 4),
-                'width' => round($d->width / 1000, 4),
-                'height' => round($d->height / 1000, 4),
+                'length' => round($d->length / 100, 4),
+                'width' => round($d->width / 100, 4),
+                'height' => round($d->height / 100, 4),
                 'dimensionUnit' => 'MTR',
             ];
         }
