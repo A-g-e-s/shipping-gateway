@@ -43,7 +43,7 @@ class ShippingGateway
                 Carrier::Gls           => $this->glsShipmentHandler()->getParcelTracking($consignmentId),
                 Carrier::Ppl           => $this->pplShipmentHandler()->getParcelTracking($consignmentId),
                 Carrier::CzechPost     => $this->czechPostShipmentHandler()->getParcelTracking($consignmentId),
-                Carrier::GebruderWeiss => null,
+                Carrier::GebruderWeiss => $this->gwShipmentHandler()->getParcelTracking($consignmentId),
             };
         } catch (ShippingException $e) {
             throw $e;
