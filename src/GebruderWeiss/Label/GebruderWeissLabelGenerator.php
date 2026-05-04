@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Ages\ShippingGateway\GebruderWeiss\Label;
 
+use Ages\ShippingGateway\Common\Shipment\CashOnDelivery;
 use Ages\ShippingGateway\Common\Shipment\Parcel;
 use Ages\ShippingGateway\Common\Shipment\ShipmentRequest;
 use Ages\ShippingGateway\GebruderWeiss\Config\GebruderWeissConfig;
@@ -14,26 +15,13 @@ class GebruderWeissLabelGenerator
     public function __construct(private readonly GebruderWeissConfig $config) {}
 
     /**
+     * Generates all parcel labels as a single multi-page PDF.
+     * Each parcel = one page (100×150 mm).
+     *
      * @param string[] $ssccCodes Indexed by parcel index (0-based)
-     * @return string[] PDF bytes per parcel (same index)
      */
-    public function generateLabels(ShipmentRequest $request, array $ssccCodes): array
+    public function generateLabels(ShipmentRequest $request, array $ssccCodes): string
     {
-        $labels = [];
-        $total = count($ssccCodes);
-        foreach ($ssccCodes as $index => $sscc) {
-            $labels[$index] = $this->generateLabel($request, $request->parcels[$index], $sscc, $index + 1, $total);
-        }
-        return $labels;
-    }
-
-    private function generateLabel(
-        ShipmentRequest $request,
-        Parcel $parcel,
-        string $sscc,
-        int $parcelNumber,
-        int $totalParcels,
-    ): string {
         $mpdf = new Mpdf([
             'mode' => 'utf-8',
             'format' => [100, 150],
@@ -46,7 +34,13 @@ class GebruderWeissLabelGenerator
         ]);
         $mpdf->SetAutoPageBreak(false);
 
-        $mpdf->WriteHTML($this->buildHtml($request, $parcel, $sscc, $parcelNumber, $totalParcels));
+        $total = count($ssccCodes);
+        foreach ($ssccCodes as $index => $sscc) {
+            if ($index > 0) {
+                $mpdf->AddPage();
+            }
+            $mpdf->WriteHTML($this->buildHtml($request, $request->parcels[$index], $sscc, $index + 1, $total));
+        }
 
         return $mpdf->Output('', 'S');
     }
@@ -85,7 +79,13 @@ class GebruderWeissLabelGenerator
             ? '<div style="font-size:11pt; font-weight:bold; line-height:1.1;">' . $this->esc($recipientName2) . '</div>'
             : '';
 
-        // Row heights must sum to exactly 144mm (150mm page - 3mm top - 3mm bottom margin)
+        // COD row: when present, service row grows +5mm, barcode row shrinks -5mm
+        $hasCod = $request->cod !== null;
+        $serviceRowHeight = $hasCod ? '15mm' : '10mm';
+        $barcodeRowHeight = $hasCod ? '30mm' : '35mm';
+        $codHtml = $hasCod ? $this->buildCodHtml($request->cod) : '';
+
+        // Row heights: 22+38+17+11+11+serviceRow+barcodeRow = 144mm in both cases
         return <<<HTML
 <!DOCTYPE html>
 <html>
@@ -184,18 +184,19 @@ table { width: 100%; border-collapse: collapse; }
     </td>
   </tr>
 
-  <!-- Row 6: Service / EP — 10mm -->
-  <tr style="height:10mm;">
+  <!-- Row 6: Service / EP (+ COD if present) — 10mm or 15mm -->
+  <tr style="height:{$serviceRowHeight};">
     <td style="border-bottom:0.5pt solid #000; padding:1mm 1.5mm; vertical-align:top; overflow:hidden;">
       <div class="lbl">Cislo zasilky / Service / EP</div>
       <div class="bold">{$this->esc($request->reference)} /{$this->esc($cfg->branchCode)} /</div>
+      {$codHtml}
     </td>
   </tr>
 
-  <!-- Row 7: Barcode — 35mm -->
-  <tr style="height:35mm;">
+  <!-- Row 7: Barcode — 35mm (or 30mm with COD) -->
+  <tr style="height:{$barcodeRowHeight};">
     <td style="text-align:center; vertical-align:middle; padding:1mm 0;">
-      <barcode code="{$sscc}" type="C128C" height="22" text="0" />
+      <barcode code="{$sscc}" type="C128C" height="2" size="1" text="0" />
       <br>
       <span style="font-size:6.5pt;">SSCC/NVE (00){$this->esc($sscc)}</span>
     </td>
@@ -206,6 +207,16 @@ table { width: 100%; border-collapse: collapse; }
 </body>
 </html>
 HTML;
+    }
+
+    private function buildCodHtml(CashOnDelivery $cod): string
+    {
+        $amount = number_format($cod->amount, 2, ',', ' ') . ' ' . $this->esc($cod->currency);
+        $vs = $cod->variableSymbol !== '' ? '  VS: ' . $this->esc($cod->variableSymbol) : '';
+        return '<div style="margin-top:1mm; font-size:7pt;">'
+            . '<strong>DOBÍRKA: ' . $amount . '</strong>'
+            . $vs
+            . '</div>';
     }
 
     private function esc(string $text): string

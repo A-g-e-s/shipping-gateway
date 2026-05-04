@@ -34,11 +34,11 @@ class GebruderWeissShipmentHandler extends GebruderWeissApi implements ShipmentH
     {
         $ssccCodes = $this->generateSsccCodes($request);
         $this->createTransportOrder($this->buildPayload($request, $ssccCodes));
-        $labelPdfs = $this->labelGenerator->generateLabels($request, $ssccCodes);
+        $combinedPdf = $this->labelGenerator->generateLabels($request, $ssccCodes);
 
         $labels = [];
         foreach ($ssccCodes as $index => $sscc) {
-            $labels[] = new ShipmentLabel(Carrier::GebruderWeiss, $sscc, $labelPdfs[$index]);
+            $labels[] = new ShipmentLabel(Carrier::GebruderWeiss, $sscc, $index === 0 ? $combinedPdf : '');
         }
         return $labels;
     }
