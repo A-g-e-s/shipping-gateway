@@ -42,7 +42,7 @@ class CzechPostShipmentHandler extends CzechPostApi implements ShipmentHandlerIn
 
         $header = $this->prepareParcelServiceHeader();
         $address = $this->buildAddress($request);
-        $services = $this->buildServices($request);
+        $services = $this->buildServices($request, $parcels[0]);
 
         $firstRef = $total > 1 ? $request->reference . '-1' : $request->reference;
         $firstParams = $this->buildParams($parcels[0], $firstRef, $request, $total > 1 ? [1, $total] : null, $request->parcelShopCode !== null);
@@ -60,7 +60,7 @@ class CzechPostShipmentHandler extends CzechPostApi implements ShipmentHandlerIn
         $multipartData = [];
         for ($i = 1; $i < $total; $i++) {
             $ref = $request->reference . '-' . ($i + 1);
-            $multipartServices = [ServiceCode::MultipartPackage];
+            $multipartServices = [ServiceCode::MultipartPackage, $this->resolvePackageSizeService($parcels[$i])];
             if ($parcels[$i]->type === ParcelType::PackageOversize) {
                 $multipartServices[] = ServiceCode::BulkyParcel;
             }
@@ -111,7 +111,7 @@ class CzechPostShipmentHandler extends CzechPostApi implements ShipmentHandlerIn
 
         if ($request->parcelShopCode !== null) {
             $address = AddressEntity::of(
-                'Balikovna',
+                'Balíkovna',
                 $r->city,
                 $this->resolveParcelShopZip($request),
                 $r->country,
@@ -135,9 +135,9 @@ class CzechPostShipmentHandler extends CzechPostApi implements ShipmentHandlerIn
         );
     }
 
-    private function buildServices(ShipmentRequest $request): ParcelServicesEntity
+    private function buildServices(ShipmentRequest $request, Parcel $parcel): ParcelServicesEntity
     {
-        $services = ParcelServicesEntity::of();
+        $services = ParcelServicesEntity::of($this->resolvePackageSizeService($parcel));
         if ($request->recipient->email !== '') {
             $services->addService(ServiceCode::EmailNotify);
         }
@@ -148,6 +148,11 @@ class CzechPostShipmentHandler extends CzechPostApi implements ShipmentHandlerIn
             $services->addService(ServiceCode::CashOnDelivery);
         }
         return $services;
+    }
+
+    private function resolvePackageSizeService(Parcel $parcel): ServiceCode
+    {
+        return ServiceCode::PackageSizeL;
     }
 
     private function prefixCode(Parcel $parcel, bool $isPsd = false): PrefixParcelCode
