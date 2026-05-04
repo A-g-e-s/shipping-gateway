@@ -14,7 +14,7 @@ class AddressEntity extends AbstractEntity
     private string $zipCode;
     private string $isoCountry;
     private ?string $subIsoCountry = null;
-    private ?string $addressCode = null;
+    private ?int $addressCode = null;
 
     final private function __construct()
     {
@@ -29,7 +29,7 @@ class AddressEntity extends AbstractEntity
         ?string $subIsoCountry = null,
         ?string $sequenceNumber = null,
         ?string $cityPart = null,
-        ?string $addressCode = null,
+        ?int $addressCode = null,
     ): self {
         $entity = new static();
         $entity->street = $street;

@@ -143,6 +143,9 @@ $request = new ShipmentRequest(
     ],
     value: new ShipmentValue(amount: 1490.0),
     cod: new CashOnDelivery(amount: 1490.0, variableSymbol: '2025001'),
+    // Pro výdejní místa:
+    // parcelShopCode: 'B69623',
+    // parcelShopZip: '69623', // u České pošty explicitně PSČ provozovny
 );
 
 /** @var \Ages\ShippingGateway\ShippingGateway $gateway */

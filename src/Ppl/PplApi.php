@@ -174,6 +174,26 @@ class PplApi implements CarrierInterface
         }
     }
 
+    public function getBatchLabel(string $batchId): string
+    {
+        $url = rtrim($this->config->url, '/') . '/' . Method::ShipmentBatch->value . '/' . $batchId . '/' . Method::ShipmentBatchLabel->value;
+
+        try {
+            $response = $this->httpClient->get($url, [
+                'headers' => [
+                    'Authorization' => 'Bearer ' . $this->token,
+                    'Content-Type' => 'text/plain'
+                ]
+            ]);
+            return $response->getBody()->getContents();
+        } catch (ClientException $exception) {
+            $body = (string) $exception->getResponse()->getBody();
+            throw new ShippingException('PPL getBatchLabel HTTP ' . $exception->getResponse()->getStatusCode() . ': ' . $body, $exception->getResponse()->getStatusCode(), $exception);
+        } catch (RequestException $exception) {
+            throw new ShippingException('PPL getBatchLabel request error: ' . $exception->getMessage(), 0, $exception);
+        }
+    }
+
     public function getStatus(string $batchId): ?\stdClass
     {
         try {

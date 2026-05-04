@@ -113,13 +113,13 @@ class CzechPostShipmentHandler extends CzechPostApi implements ShipmentHandlerIn
             $address = AddressEntity::of(
                 'Balikovna',
                 $r->city,
-                $this->normalizeParcelShopZip($request->parcelShopCode, $r->zip),
+                $this->resolveParcelShopZip($request),
                 $r->country,
                 null,
                 null,
                 null,
                 null,
-                $request->parcelShopCode,
+                $this->normalizeParcelShopAddressCode($request->parcelShopCode),
             );
         } else {
             $address = AddressEntity::of($r->street, $r->city, $r->zip, $r->country, $r->houseNumber);
@@ -238,13 +238,22 @@ class CzechPostShipmentHandler extends CzechPostApi implements ShipmentHandlerIn
         return array_values(array_unique($details));
     }
 
-    private function normalizeParcelShopZip(string $parcelShopCode, string $fallbackZip): string
+    private function resolveParcelShopZip(ShipmentRequest $request): string
     {
-        $digits = preg_replace('~\D+~', '', $parcelShopCode);
-        if (is_string($digits) && $digits !== '') {
-            return $digits;
+        if ($request->parcelShopZip !== null && trim($request->parcelShopZip) !== '') {
+            return trim($request->parcelShopZip);
         }
 
-        return $fallbackZip;
+        return $request->recipient->zip;
+    }
+
+    private function normalizeParcelShopAddressCode(string $parcelShopCode): ?int
+    {
+        $digits = preg_replace('~\D+~', '', $parcelShopCode);
+        if (!is_string($digits) || $digits === '') {
+            return null;
+        }
+
+        return (int) $digits;
     }
 }

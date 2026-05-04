@@ -17,6 +17,7 @@ readonly class ShipmentRequest
         public ?CashOnDelivery $cod = null,
         public ?string $note = null,
         public ?string $parcelShopCode = null,
+        public ?string $parcelShopZip = null,
     ) {
     }
 }
