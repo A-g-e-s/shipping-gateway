@@ -44,6 +44,7 @@ class GebruderWeissLabelGenerator
             'margin_header' => 0,
             'margin_footer' => 0,
         ]);
+        $mpdf->SetAutoPageBreak(false);
 
         $mpdf->WriteHTML($this->buildHtml($request, $parcel, $sscc, $parcelNumber, $totalParcels));
 
@@ -81,9 +82,10 @@ class GebruderWeissLabelGenerator
         }
 
         $name2Html = $recipientName2 !== null
-            ? '<div class="name-lg">' . $this->esc($recipientName2) . '</div>'
+            ? '<div style="font-size:11pt; font-weight:bold; line-height:1.1;">' . $this->esc($recipientName2) . '</div>'
             : '';
 
+        // Row heights must sum to exactly 144mm (150mm page - 3mm top - 3mm bottom margin)
         return <<<HTML
 <!DOCTYPE html>
 <html>
@@ -93,104 +95,113 @@ class GebruderWeissLabelGenerator
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: Arial, sans-serif; font-size: 7pt; }
 table { width: 100%; border-collapse: collapse; }
-td { padding: 1.5mm 1.5mm; vertical-align: top; }
-.bb { border-bottom: 0.5pt solid #000; }
-.br { border-right: 0.5pt solid #000; }
 .lbl { font-size: 6pt; color: #444; }
-.bold { font-weight: bold; }
-.name-lg { font-size: 12pt; font-weight: bold; line-height: 1.15; }
-.street-md { font-size: 9pt; font-weight: bold; line-height: 1.2; }
-.zip-lg { font-size: 13pt; font-weight: bold; line-height: 1.2; }
-.city-lg { font-size: 12pt; font-weight: bold; line-height: 1.15; }
-.center { text-align: center; }
+.bold { font-weight: bold; font-size: 7pt; }
 </style>
 </head>
 <body>
 
-<table class="bb" style="height:27mm;">
-  <tr>
-    <td class="br" style="width:30mm; text-align:center; vertical-align:middle; height:27mm;">
-      {$logoHtml}
-    </td>
-    <td style="font-size:6.5pt; vertical-align:top; padding-top:2mm;">
-      <strong>Gebrüder Weiss</strong><br>
-      transport a logistika<br>
-      {$this->esc($senderName)}<br>
-      {$this->esc($senderStreet)}<br>
-      {$this->esc($senderZipCity)}
+<table style="height:144mm; table-layout:fixed;">
+
+  <!-- Row 1: Header — 22mm -->
+  <tr style="height:22mm;">
+    <td style="border-bottom:0.5pt solid #000; padding:0; overflow:hidden;">
+      <table style="height:22mm;">
+        <tr>
+          <td style="width:28mm; border-right:0.5pt solid #000; text-align:center; vertical-align:middle; height:22mm;">
+            {$logoHtml}
+          </td>
+          <td style="font-size:6.5pt; vertical-align:top; padding:1.5mm 1.5mm 0 2mm;">
+            <strong>Gebrüder Weiss</strong><br>
+            transport a logistika<br>
+            {$this->esc($senderName)}<br>
+            {$this->esc($senderStreet)}<br>
+            {$this->esc($senderZipCity)}
+          </td>
+        </tr>
+      </table>
     </td>
   </tr>
-</table>
 
-<table class="bb">
-  <tr>
-    <td style="padding:1mm 1.5mm 2mm 1.5mm;">
+  <!-- Row 2: PRIJEMCE — 38mm -->
+  <tr style="height:38mm;">
+    <td style="border-bottom:0.5pt solid #000; padding:1mm 1.5mm; vertical-align:top; overflow:hidden;">
       <div class="lbl">PRIJEMCE:</div>
-      <div class="name-lg">{$this->esc($recipientName)}</div>
+      <div style="font-size:11pt; font-weight:bold; line-height:1.1;">{$this->esc($recipientName)}</div>
       {$name2Html}
-      <div class="street-md">{$this->esc($recipientStreet)}</div>
-      <div class="zip-lg">{$this->esc($recipientZipCountry)}</div>
-      <div class="city-lg">{$this->esc($recipientCity)}</div>
+      <div style="font-size:8pt; font-weight:bold; line-height:1.2;">{$this->esc($recipientStreet)}</div>
+      <div style="font-size:12pt; font-weight:bold; line-height:1.15;">{$this->esc($recipientZipCountry)}</div>
+      <div style="font-size:11pt; font-weight:bold; line-height:1.1;">{$this->esc($recipientCity)}</div>
     </td>
   </tr>
-</table>
 
-<table class="bb">
-  <tr>
-    <td style="padding:1mm 1.5mm;">
+  <!-- Row 3: ODESILATEL — 17mm -->
+  <tr style="height:17mm;">
+    <td style="border-bottom:0.5pt solid #000; padding:1mm 1.5mm; vertical-align:top; overflow:hidden;">
       <div class="lbl">ODESILATEL:</div>
-      <div class="bold" style="font-size:7.5pt;">{$this->esc($senderName)}</div>
-      <div>{$this->esc($senderStreet)}</div>
-      <div>{$this->esc($senderZipCity)}</div>
+      <div style="font-size:7.5pt; font-weight:bold;">{$this->esc($senderName)}</div>
+      <div style="font-size:7pt;">{$this->esc($senderStreet)}</div>
+      <div style="font-size:7pt;">{$this->esc($senderZipCity)}</div>
     </td>
   </tr>
-</table>
 
-<table class="bb">
-  <tr>
-    <td class="br" style="width:50%;">
-      <div class="lbl">Cislo objednavky:</div>
-      <div class="bold">{$this->esc($request->reference)}</div>
-    </td>
-    <td>
-      <div class="lbl">Datum zasilky:</div>
-      <div class="bold">{$date}</div>
+  <!-- Row 4: Order reference + date — 11mm -->
+  <tr style="height:11mm;">
+    <td style="border-bottom:0.5pt solid #000; padding:0; overflow:hidden;">
+      <table style="height:11mm;">
+        <tr>
+          <td style="width:50%; border-right:0.5pt solid #000; padding:1mm 1.5mm; vertical-align:top;">
+            <div class="lbl">Cislo objednavky:</div>
+            <div class="bold">{$this->esc($request->reference)}</div>
+          </td>
+          <td style="padding:1mm 1.5mm; vertical-align:top;">
+            <div class="lbl">Datum zasilky:</div>
+            <div class="bold">{$date}</div>
+          </td>
+        </tr>
+      </table>
     </td>
   </tr>
-</table>
 
-<table class="bb">
-  <tr>
-    <td class="br" style="width:33%;">
-      <div class="lbl">Pocet colli:</div>
-      <div class="bold">{$parcelNumber}/{$totalParcels}</div>
-    </td>
-    <td class="br" style="width:34%;">
-      <div class="lbl">Hmotnost:</div>
-      <div class="bold">{$weight}</div>
-    </td>
-    <td>
-      <div class="lbl">Signo:</div>
-      &nbsp;
+  <!-- Row 5: Colli + weight + signo — 11mm -->
+  <tr style="height:11mm;">
+    <td style="border-bottom:0.5pt solid #000; padding:0; overflow:hidden;">
+      <table style="height:11mm;">
+        <tr>
+          <td style="width:33%; border-right:0.5pt solid #000; padding:1mm; vertical-align:top;">
+            <div class="lbl">Pocet colli:</div>
+            <div class="bold">{$parcelNumber}/{$totalParcels}</div>
+          </td>
+          <td style="width:34%; border-right:0.5pt solid #000; padding:1mm; vertical-align:top;">
+            <div class="lbl">Hmotnost:</div>
+            <div class="bold">{$weight}</div>
+          </td>
+          <td style="padding:1mm; vertical-align:top;">
+            <div class="lbl">Signo:</div>
+          </td>
+        </tr>
+      </table>
     </td>
   </tr>
-</table>
 
-<table class="bb">
-  <tr>
-    <td>
+  <!-- Row 6: Service / EP — 10mm -->
+  <tr style="height:10mm;">
+    <td style="border-bottom:0.5pt solid #000; padding:1mm 1.5mm; vertical-align:top; overflow:hidden;">
       <div class="lbl">Cislo zasilky / Service / EP</div>
       <div class="bold">{$this->esc($request->reference)} /{$this->esc($cfg->branchCode)} /</div>
     </td>
   </tr>
-</table>
 
-<div class="center" style="margin-top:3mm;">
-  <barcode code="{$sscc}" type="C128B" height="18" text="0" />
-</div>
-<div class="center" style="font-size:6.5pt; margin-top:1.5mm;">
-  SSCC/NVE (00){$this->esc($sscc)}
-</div>
+  <!-- Row 7: Barcode — 35mm -->
+  <tr style="height:35mm;">
+    <td style="text-align:center; vertical-align:middle; padding:1mm 0;">
+      <barcode code="{$sscc}" type="C128C" height="22" text="0" />
+      <br>
+      <span style="font-size:6.5pt;">SSCC/NVE (00){$this->esc($sscc)}</span>
+    </td>
+  </tr>
+
+</table>
 
 </body>
 </html>
