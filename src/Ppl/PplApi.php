@@ -180,6 +180,10 @@ class PplApi implements CarrierInterface
 
         try {
             $response = $this->httpClient->get($url, [
+                'query' => [
+                    'limit' => 100,
+                    'offset' => 0,
+                ],
                 'headers' => [
                     'Authorization' => 'Bearer ' . $this->token,
                     'Content-Type' => 'text/plain'

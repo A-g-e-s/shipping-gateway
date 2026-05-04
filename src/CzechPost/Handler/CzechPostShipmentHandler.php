@@ -119,7 +119,6 @@ class CzechPostShipmentHandler extends CzechPostApi implements ShipmentHandlerIn
                 null,
                 null,
                 null,
-                $this->normalizeParcelShopAddressCode($request->parcelShopCode),
             );
         } else {
             $address = AddressEntity::of($r->street, $r->city, $r->zip, $r->country, $r->houseNumber);
@@ -225,6 +224,19 @@ class CzechPostShipmentHandler extends CzechPostApi implements ShipmentHandlerIn
                 continue;
             }
 
+            $stateResponses = $item['parcelStateResponse'] ?? null;
+            if (is_array($stateResponses)) {
+                foreach ($stateResponses as $stateResponse) {
+                    if (!is_array($stateResponse) || !is_numeric($stateResponse['responseCode'] ?? null)) {
+                        continue;
+                    }
+
+                    $context = (string) ($item['recordID'] ?? $item['recordNumber'] ?? $item['parcelCode'] ?? '');
+                    $message = ErrorCodes::getErrorMsg((int) $stateResponse['responseCode']);
+                    $details[] = $context !== '' ? $context . ': ' . $message : $message;
+                }
+            }
+
             $responseCode = $item['responseCode'] ?? $item['errorCode'] ?? null;
             if (!is_numeric($responseCode)) {
                 continue;
@@ -247,13 +259,4 @@ class CzechPostShipmentHandler extends CzechPostApi implements ShipmentHandlerIn
         return $request->recipient->zip;
     }
 
-    private function normalizeParcelShopAddressCode(string $parcelShopCode): ?int
-    {
-        $digits = preg_replace('~\D+~', '', $parcelShopCode);
-        if (!is_string($digits) || $digits === '') {
-            return null;
-        }
-
-        return (int) $digits;
-    }
 }
