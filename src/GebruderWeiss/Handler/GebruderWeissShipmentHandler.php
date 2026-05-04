@@ -32,7 +32,7 @@ class GebruderWeissShipmentHandler extends GebruderWeissApi implements ShipmentH
 
     public function createShipment(ShipmentRequest $request): array
     {
-        $ssccCodes = $this->generateSsccCodes($request);
+        $ssccCodes = $this->generateBarcodeCodes($request);
         $this->createTransportOrder($this->buildPayload($request, $ssccCodes));
         $combinedPdf = $this->labelGenerator->generateLabels($request, $ssccCodes);
 
@@ -46,35 +46,20 @@ class GebruderWeissShipmentHandler extends GebruderWeissApi implements ShipmentH
     /**
      * @return string[]
      */
-    private function generateSsccCodes(ShipmentRequest $request): array
+    private function generateBarcodeCodes(ShipmentRequest $request): array
     {
         $codes = [];
         foreach (array_keys($request->parcels) as $index) {
-            $codes[$index] = $this->generateSscc($request->reference, $index);
+            $codes[$index] = $this->generateBarcode($request->reference, $index);
         }
         return $codes;
     }
 
-    private function generateSscc(string $reference, int $parcelIndex): string
+    private function generateBarcode(string $reference, int $parcelIndex): string
     {
-        $prefix = substr($this->config->ssccPrefix, 0, 16);
-        $available = 17 - strlen($prefix);
-
+        $prefix = substr($this->config->ssccPrefix, 0, 10);
         $hash = sprintf('%013d', abs(crc32($reference . '|' . $parcelIndex)) % 10_000_000_000_000);
-        $data = str_pad(substr($prefix . $hash, 0, 17), 17, '0');
-
-        return $data . $this->gs1CheckDigit($data);
-    }
-
-    private function gs1CheckDigit(string $digits): string
-    {
-        $sum = 0;
-        $len = strlen($digits);
-        for ($i = 0; $i < $len; $i++) {
-            $digit = (int) $digits[$len - 1 - $i];
-            $sum += ($i % 2 === 0) ? $digit * 3 : $digit;
-        }
-        return (string) ((10 - ($sum % 10)) % 10);
+        return str_pad(substr($prefix . $hash, 0, 16), 16, '0');
     }
 
     /**
@@ -189,7 +174,7 @@ class GebruderWeissShipmentHandler extends GebruderWeissApi implements ShipmentH
     {
         $packItem = [
             'barcode' => [
-                'barcodeType' => 'SSCC',
+                'barcodeType' => 'OTHER',
                 'barcode' => $sscc,
             ],
             'measurements' => [

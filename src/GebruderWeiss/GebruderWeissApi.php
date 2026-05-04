@@ -77,7 +77,7 @@ class GebruderWeissApi implements CarrierInterface
                     'Authorization' => 'Bearer ' . $this->token,
                     'Accept' => 'application/json',
                     'Content-Type' => 'application/json',
-                    'accept-language' => 'en-US',
+                    'accept-language' => 'cs',
                 ],
                 'http_errors' => false,
             ]);
@@ -110,7 +110,7 @@ class GebruderWeissApi implements CarrierInterface
                     'headers' => [
                         'Authorization' => 'Bearer ' . $this->trackingToken,
                         'Accept' => 'application/json',
-                        'accept-language' => 'en-US',
+                        'accept-language' => 'cs',
                     ],
                     'http_errors' => false,
                 ]
