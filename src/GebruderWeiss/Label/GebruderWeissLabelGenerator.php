@@ -108,15 +108,14 @@ table { width: 100%; border-collapse: collapse; }
     <td style="border-bottom:0.5pt solid #000; padding:0; overflow:hidden;">
       <table style="height:22mm;">
         <tr>
-          <td style="width:28mm; border-right:0.5pt solid #000; text-align:center; vertical-align:middle; height:22mm;">
+          <td style="width:28mm; border-right:0.5pt solid #000; text-align:center; vertical-align:middle; height:22mm; padding:2mm;">
             {$logoHtml}
           </td>
           <td style="font-size:6.5pt; vertical-align:top; padding:1.5mm 1.5mm 0 2mm;">
-            <strong>Gebrüder Weiss</strong><br>
+            <strong>Gebrüder Weiss spol. s r.o.</strong><br>
             transport a logistika<br>
-            {$this->esc($senderName)}<br>
-            {$this->esc($senderStreet)}<br>
-            {$this->esc($senderZipCity)}
+            Spojovaci ul.<br>
+            CZ 373 82 Borsov nad Vltavou
           </td>
         </tr>
       </table>
@@ -195,7 +194,7 @@ table { width: 100%; border-collapse: collapse; }
 
   <!-- Row 7: Barcode — 35mm (or 30mm with COD) -->
   <tr style="height:{$barcodeRowHeight};">
-    <td style="text-align:center; vertical-align:middle; padding:1mm 0;">
+    <td style="text-align:center; vertical-align:middle; padding:2mm 4mm;">
       <barcode code="{$sscc}" type="C128C" height="2" size="1" text="0" />
       <br>
       <span style="font-size:6.5pt;">SSCC/NVE (00){$this->esc($sscc)}</span>
