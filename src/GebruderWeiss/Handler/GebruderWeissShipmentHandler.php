@@ -112,9 +112,6 @@ class GebruderWeissShipmentHandler extends GebruderWeissApi implements ShipmentH
 
         return [
             'addressType' => 'SHIPPER',
-            'addressReferences' => [
-                ['qualifier' => 'CUSTOMER_ID', 'reference' => (string) $this->config->customerId],
-            ],
             'address' => [
                 'name1' => $p->name,
                 'street1' => $p->getStreetWithNumber(),
