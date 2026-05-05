@@ -108,10 +108,25 @@ class GebruderWeissShipmentHandler extends GebruderWeissApi implements ShipmentH
      */
     private function buildShipperAddress(): array
     {
+        $p = $this->config->pickupAddress;
+
         return [
             'addressType' => 'SHIPPER',
             'addressReferences' => [
                 ['qualifier' => 'CUSTOMER_ID', 'reference' => (string) $this->config->customerId],
+            ],
+            'address' => [
+                'name1' => $p->name,
+                'street1' => $p->getStreetWithNumber(),
+                'city' => $p->city,
+                'zipCode' => $p->zip,
+                'countryCode' => $p->country,
+            ],
+            'contacts' => [
+                [
+                    'email' => $p->email,
+                    'phone' => $p->phone,
+                ],
             ],
         ];
     }
