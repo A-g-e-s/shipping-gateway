@@ -122,12 +122,6 @@ class GebruderWeissShipmentHandler extends GebruderWeissApi implements ShipmentH
                 'zipCode' => $p->zip,
                 'countryCode' => $p->country,
             ],
-            'contacts' => [
-                [
-                    'email' => $p->email,
-                    'phone' => $p->phone,
-                ],
-            ],
         ];
     }
 
