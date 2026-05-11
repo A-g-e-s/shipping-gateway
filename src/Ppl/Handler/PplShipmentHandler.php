@@ -14,9 +14,14 @@ use Ages\ShippingGateway\Ppl\Entity\CashOnDeliveryEntity;
 use Ages\ShippingGateway\Ppl\Entity\ParcelEntity;
 use Ages\ShippingGateway\Ppl\Entity\SpecificDeliveryEntity;
 use Ages\ShippingGateway\Ppl\PplApi;
+use Mpdf\Mpdf;
 
 class PplShipmentHandler extends PplApi implements ShipmentHandlerInterface
 {
+    private const int BATCH_POLL_ATTEMPTS = 30;
+    private const int LABEL_POLL_ATTEMPTS = 30;
+    private const int POLL_DELAY_MICROSECONDS = 500_000;
+
     public function getCarrier(): Carrier
     {
         return Carrier::Ppl;
@@ -40,7 +45,7 @@ class PplShipmentHandler extends PplApi implements ShipmentHandlerInterface
 
         $batchId = $this->createBatch($entity);
         $status = $this->waitForBatch($batchId);
-        $labelPdf = $this->extractLabelPdf($status, $batchId, $count);
+        $labelPdf = $this->extractLabelPdf($status);
 
         foreach ($this->extractTrackingNumbers($status, $request->reference) as $trackingNumber) {
             $labels[] = new ShipmentLabel(Carrier::Ppl, $trackingNumber, $labelPdf);
@@ -51,12 +56,12 @@ class PplShipmentHandler extends PplApi implements ShipmentHandlerInterface
 
     private function waitForBatch(string $batchId): \stdClass
     {
-        for ($i = 0; $i < 6; $i++) {
+        for ($i = 0; $i < self::BATCH_POLL_ATTEMPTS; $i++) {
             $status = $this->getStatus($batchId);
             if ($status !== null) {
                 return $status;
             }
-            usleep(500_000);
+            usleep(self::POLL_DELAY_MICROSECONDS);
         }
         throw new ShippingException('PPL: batch processing timeout for batch ' . $batchId);
     }
@@ -71,10 +76,7 @@ class PplShipmentHandler extends PplApi implements ShipmentHandlerInterface
         }
 
         $trackingNumbers = [];
-        foreach ($status->items as $item) {
-            if (!$item instanceof \stdClass) {
-                continue;
-            }
+        foreach ($this->collectShipmentItems($status->items) as $item) {
             $trackingNumbers[] = (string) ($item->shipmentNumber ?? $fallbackRef);
         }
 
@@ -85,51 +87,79 @@ class PplShipmentHandler extends PplApi implements ShipmentHandlerInterface
         return $trackingNumbers;
     }
 
-    private function extractLabelPdf(\stdClass $status, string $batchId, int $count): string
+    private function extractLabelPdf(\stdClass $status): string
     {
-        if ($count > 1) {
-            return $this->waitForBatchLabel($batchId);
+        $labelPdfs = [];
+        foreach ($this->extractLabelUrls($status) as $labelUrl) {
+            $labelPdfs[] = $this->waitForLabel($labelUrl);
         }
 
-        $labelUrl = $status->completeLabel?->labelUrls[0]
-            ?? $status->items[0]?->labelUrl
-            ?? null;
-        if ($labelUrl === null) {
-            throw new ShippingException('PPL: label URL not found in batch response (completeLabel.labelUrls[0] / items[0].labelUrl)');
+        if ($labelPdfs === []) {
+            throw new ShippingException('PPL: label URL not found in batch response');
         }
 
-        return $this->waitForLabel((string) $labelUrl);
+        if (count($labelPdfs) === 1) {
+            return $labelPdfs[0];
+        }
+
+        return $this->mergeLabelPdfs($labelPdfs);
     }
 
-    private function waitForBatchLabel(string $batchId): string
+    /**
+     * @param array<int, \stdClass> $items
+     * @return array<int, \stdClass>
+     */
+    private function collectShipmentItems(array $items): array
     {
-        $lastException = null;
+        $collected = [];
 
-        for ($i = 0; $i < 8; $i++) {
-            try {
-                return $this->getBatchLabel($batchId);
-            } catch (ShippingException $e) {
-                $lastException = $e;
-                if ($e->getCode() !== 404) {
-                    throw $e;
-                }
+        foreach ($items as $item) {
+            if (!$item instanceof \stdClass) {
+                continue;
             }
 
-            usleep(500_000);
+            $collected[] = $item;
+
+            if (isset($item->relatedItems) && is_array($item->relatedItems)) {
+                array_push($collected, ...$this->collectShipmentItems($item->relatedItems));
+            }
         }
 
-        if ($lastException instanceof ShippingException) {
-            throw $lastException;
+        return $collected;
+    }
+
+    /**
+     * @return string[]
+     */
+    private function extractLabelUrls(\stdClass $status): array
+    {
+        if (!isset($status->items) || !is_array($status->items) || $status->items === []) {
+            return [];
         }
 
-        throw new ShippingException('PPL: batch label timeout for batch ' . $batchId);
+        $urls = [];
+        foreach ($this->collectShipmentItems($status->items) as $item) {
+            if (isset($item->labelUrl) && is_string($item->labelUrl) && $item->labelUrl !== '') {
+                $urls[] = $item->labelUrl;
+            }
+        }
+
+        if ($urls === [] && isset($status->completeLabel?->labelUrls) && is_array($status->completeLabel->labelUrls)) {
+            foreach ($status->completeLabel->labelUrls as $labelUrl) {
+                if (is_string($labelUrl) && $labelUrl !== '') {
+                    $urls[] = $labelUrl;
+                }
+            }
+        }
+
+        return array_values(array_unique($urls));
     }
 
     private function waitForLabel(string $labelUrl): string
     {
         $lastException = null;
 
-        for ($i = 0; $i < 8; $i++) {
+        for ($i = 0; $i < self::LABEL_POLL_ATTEMPTS; $i++) {
             try {
                 return $this->getLabel($labelUrl);
             } catch (ShippingException $e) {
@@ -139,7 +169,7 @@ class PplShipmentHandler extends PplApi implements ShipmentHandlerInterface
                 }
             }
 
-            usleep(500_000);
+            usleep(self::POLL_DELAY_MICROSECONDS);
         }
 
         if ($lastException instanceof ShippingException) {
@@ -147,6 +177,42 @@ class PplShipmentHandler extends PplApi implements ShipmentHandlerInterface
         }
 
         throw new ShippingException('PPL: label timeout for URL ' . $labelUrl);
+    }
+
+    /**
+     * @param string[] $labelPdfs
+     */
+    private function mergeLabelPdfs(array $labelPdfs): string
+    {
+        $pdf = new Mpdf();
+        $temporaryFiles = [];
+
+        try {
+            foreach ($labelPdfs as $labelPdf) {
+                $temporaryFile = tempnam(sys_get_temp_dir(), 'ppl_');
+                if ($temporaryFile === false) {
+                    throw new ShippingException('PPL: failed to create temporary file for label merge');
+                }
+
+                file_put_contents($temporaryFile, $labelPdf);
+                $temporaryFiles[] = $temporaryFile;
+
+                $pageCount = $pdf->setSourceFile($temporaryFile);
+                for ($page = 1; $page <= $pageCount; $page++) {
+                    $template = $pdf->importPage($page);
+                    $pdf->AddPage();
+                    $pdf->useTemplate($template, 0, 0, null, null, true);
+                }
+            }
+
+            return $pdf->Output('', 'S');
+        } finally {
+            foreach ($temporaryFiles as $temporaryFile) {
+                if (is_file($temporaryFile)) {
+                    @unlink($temporaryFile);
+                }
+            }
+        }
     }
 
     private function buildDelivery(ShipmentRequest $request): AddressEntity

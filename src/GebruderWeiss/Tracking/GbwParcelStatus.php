@@ -71,20 +71,36 @@ class GbwParcelStatus implements ParcelStatusInterface
         $eventMetaCode = self::extractFirstString($event['eventMetaCode'] ?? null);
         $eventReasonCode = self::extractFirstString($event['eventReasonCode'] ?? null);
 
-        $entity->delivered = self::isDelivered($myGwCode, $eventMetaCode, $entity->statusCode);
+        $entity->delivered = self::isDelivered($myGwCode, $eventMetaCode, $entity->statusCode, $entity->statusDescription);
         $entity->damaged = $myGwCode === 'CRITICAL';
         $entity->customInfo = self::buildCustomInfo($myGwCode, $eventMetaCode, $eventReasonCode);
 
         return $entity;
     }
 
-    private static function isDelivered(string $myGwCode, ?string $eventMetaCode, string $statusCode): bool
+    private static function isDelivered(
+        string $myGwCode,
+        ?string $eventMetaCode,
+        string $statusCode,
+        string $statusDescription,
+    ): bool
     {
         if ($eventMetaCode !== null && str_contains(strtoupper($eventMetaCode), 'DELIVERED')) {
             return true;
         }
 
-        return $myGwCode === 'COMPLETED' && str_contains(strtoupper($statusCode), 'DELIVER');
+        $normalizedDescription = self::normalizeText($statusDescription);
+        if (in_array($normalizedDescription, ['doruceno', 'delivered', 'zugestellt'], true)) {
+            return true;
+        }
+
+        return $myGwCode === 'COMPLETED'
+            && (
+                str_contains(strtoupper($statusCode), 'DELIVER')
+                || str_contains($normalizedDescription, 'deliver')
+                || str_contains($normalizedDescription, 'doruc')
+                || str_contains($normalizedDescription, 'zugestellt')
+            );
     }
 
     private static function buildCustomInfo(?string ...$parts): ?string
@@ -127,6 +143,21 @@ class GbwParcelStatus implements ParcelStatusInterface
         } catch (\Exception) {
             return null;
         }
+    }
+
+    private static function normalizeText(string $value): string
+    {
+        $value = trim(mb_strtolower($value));
+        if ($value === '') {
+            return '';
+        }
+
+        $transliterated = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value);
+        if (is_string($transliterated) && $transliterated !== '') {
+            $value = $transliterated;
+        }
+
+        return preg_replace('/[^a-z0-9]+/', '', $value) ?? '';
     }
 
     /**
