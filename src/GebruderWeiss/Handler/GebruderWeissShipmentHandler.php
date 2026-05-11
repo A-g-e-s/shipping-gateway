@@ -247,7 +247,7 @@ class GebruderWeissShipmentHandler extends GebruderWeissApi implements ShipmentH
     private function getPackageTypeCode(ParcelType $type): string
     {
         return match ($type) {
-            ParcelType::Package, ParcelType::PackageOversize => 'BOX',
+            ParcelType::Package, ParcelType::PackageOversize => 'BAL',
             ParcelType::PalletEur, ParcelType::PalletCustom => 'EUP',
             ParcelType::PalletHalf => 'HPA',
             ParcelType::PalletOneWay => 'EWP',

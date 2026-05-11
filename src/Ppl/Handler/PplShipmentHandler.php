@@ -98,7 +98,7 @@ class PplShipmentHandler extends PplApi implements ShipmentHandlerInterface
             throw new ShippingException('PPL: label URL not found in batch response (completeLabel.labelUrls[0] / items[0].labelUrl)');
         }
 
-        return $this->getLabel((string) $labelUrl);
+        return $this->waitForLabel((string) $labelUrl);
     }
 
     private function waitForBatchLabel(string $batchId): string
@@ -123,6 +123,30 @@ class PplShipmentHandler extends PplApi implements ShipmentHandlerInterface
         }
 
         throw new ShippingException('PPL: batch label timeout for batch ' . $batchId);
+    }
+
+    private function waitForLabel(string $labelUrl): string
+    {
+        $lastException = null;
+
+        for ($i = 0; $i < 8; $i++) {
+            try {
+                return $this->getLabel($labelUrl);
+            } catch (ShippingException $e) {
+                $lastException = $e;
+                if ($e->getCode() !== 404) {
+                    throw $e;
+                }
+            }
+
+            usleep(500_000);
+        }
+
+        if ($lastException instanceof ShippingException) {
+            throw $lastException;
+        }
+
+        throw new ShippingException('PPL: label timeout for URL ' . $labelUrl);
     }
 
     private function buildDelivery(ShipmentRequest $request): AddressEntity

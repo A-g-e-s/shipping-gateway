@@ -48,20 +48,20 @@ class AddressEntity extends AbstractEntity
     public function toArray(): array
     {
         $e = [
-            'name' => self::sanitizeAscii($this->name),
-            'street' => self::sanitizeAscii($this->street),
-            'city' => self::sanitizeAscii($this->city),
+            'name' => self::sanitizeText($this->name),
+            'street' => self::sanitizeText($this->street),
+            'city' => self::sanitizeText($this->city),
             'zipCode' => $this->zipCode,
             'country' => Strings::upper($this->countryIsoCode),
         ];
         if ($this->contactName !== null) {
-            $e['contact'] = self::sanitizeAscii($this->contactName);
+            $e['contact'] = self::sanitizeText($this->contactName);
         }
         if ($this->contactPhone !== null) {
             $e['phone'] = $this->contactPhone;
         }
         if ($this->houseNumberInfo !== null) {
-            $e['name2'] = self::sanitizeAscii($this->houseNumberInfo);
+            $e['name2'] = self::sanitizeText($this->houseNumberInfo);
         }
         if ($this->contactEmail !== null) {
             $e['email'] = $this->contactEmail;
@@ -69,17 +69,9 @@ class AddressEntity extends AbstractEntity
         return $e;
     }
 
-    private static function sanitizeAscii(string $value): string
+    private static function sanitizeText(string $value): string
     {
-        $sanitized = $value;
-        if (function_exists('iconv')) {
-            $converted = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value);
-            if (is_string($converted)) {
-                $sanitized = $converted;
-            }
-        }
-
-        $sanitized = preg_replace('/[^\x20-\x7E]/', '', $sanitized) ?? $sanitized;
+        $sanitized = preg_replace('/[\x00-\x1F\x7F]+/u', ' ', $value) ?? $value;
         $sanitized = preg_replace('/\s+/', ' ', $sanitized) ?? $sanitized;
 
         return trim($sanitized);
