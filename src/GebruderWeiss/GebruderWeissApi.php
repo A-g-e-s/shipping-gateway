@@ -105,7 +105,7 @@ class GebruderWeissApi implements CarrierInterface
     {
         try {
             $response = $this->httpClient->get(
-                $this->config->trackingUrl . '/packages/' . urlencode($consignmentId) . '/current-status',
+                $this->config->trackingUrl . '/packages/' . urlencode($consignmentId) . '/status',
                 [
                     'headers' => [
                         'Authorization' => 'Bearer ' . $this->trackingToken,
@@ -145,9 +145,20 @@ class GebruderWeissApi implements CarrierInterface
     {
         $tracking = GbwParcelTracking::of($barcode);
 
-        $statusCurrent = $data['statusCurrent'] ?? null;
-        if (is_array($statusCurrent)) {
-            $tracking->addStatus(GbwParcelStatus::of($statusCurrent));
+        $statusHistory = $data['statusHistory'] ?? null;
+        if (is_array($statusHistory)) {
+            foreach ($statusHistory as $event) {
+                if (is_array($event)) {
+                    $tracking->addStatus(GbwParcelStatus::of($event));
+                }
+            }
+        }
+
+        if ($tracking->parcelStatuses === []) {
+            $statusCurrent = $data['statusCurrent'] ?? null;
+            if (is_array($statusCurrent)) {
+                $tracking->addStatus(GbwParcelStatus::of($statusCurrent));
+            }
         }
 
         return $tracking;

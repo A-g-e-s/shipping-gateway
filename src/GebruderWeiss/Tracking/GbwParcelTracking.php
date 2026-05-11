@@ -50,7 +50,12 @@ class GbwParcelTracking implements ParcelTrackingInterface
 
         if ($status->delivered) {
             $this->delivered = true;
-            $this->deliveredDate = $status->statusDate;
+            if (
+                $this->deliveredDate === null
+                || ($status->statusDate !== null && $status->statusDate > $this->deliveredDate)
+            ) {
+                $this->deliveredDate = $status->statusDate;
+            }
         }
         if ($status->damaged) {
             $this->damaged = true;

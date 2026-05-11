@@ -68,11 +68,53 @@ class GbwParcelStatus implements ParcelStatusInterface
         $signee = $event['eventSignee'] ?? null;
         $entity->statusInfo = is_string($signee) && $signee !== '' ? $signee : null;
 
-        $entity->delivered = $myGwCode === 'COMPLETED';
+        $eventMetaCode = self::extractFirstString($event['eventMetaCode'] ?? null);
+        $eventReasonCode = self::extractFirstString($event['eventReasonCode'] ?? null);
+
+        $entity->delivered = self::isDelivered($myGwCode, $eventMetaCode, $entity->statusCode);
         $entity->damaged = $myGwCode === 'CRITICAL';
-        $entity->customInfo = $myGwCode !== '' ? $myGwCode : null;
+        $entity->customInfo = self::buildCustomInfo($myGwCode, $eventMetaCode, $eventReasonCode);
 
         return $entity;
+    }
+
+    private static function isDelivered(string $myGwCode, ?string $eventMetaCode, string $statusCode): bool
+    {
+        if ($eventMetaCode !== null && str_contains(strtoupper($eventMetaCode), 'DELIVERED')) {
+            return true;
+        }
+
+        return $myGwCode === 'COMPLETED' && str_contains(strtoupper($statusCode), 'DELIVER');
+    }
+
+    private static function buildCustomInfo(?string ...$parts): ?string
+    {
+        $parts = array_values(array_filter($parts, static fn (?string $part): bool => $part !== null && $part !== ''));
+        if ($parts === []) {
+            return null;
+        }
+
+        return implode(' | ', array_unique($parts));
+    }
+
+    /**
+     * @param mixed $value
+     */
+    private static function extractFirstString(mixed $value): ?string
+    {
+        if (is_string($value) && $value !== '') {
+            return $value;
+        }
+
+        if (is_array($value)) {
+            foreach ($value as $item) {
+                if (is_string($item) && $item !== '') {
+                    return $item;
+                }
+            }
+        }
+
+        return null;
     }
 
     private static function parseDateTime(string $value): ?\DateTimeImmutable
