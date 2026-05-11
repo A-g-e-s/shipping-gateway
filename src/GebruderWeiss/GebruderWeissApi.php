@@ -147,11 +147,7 @@ class GebruderWeissApi implements CarrierInterface
 
         $statusHistory = $data['statusHistory'] ?? null;
         if (is_array($statusHistory)) {
-            foreach ($statusHistory as $event) {
-                if (is_array($event)) {
-                    $tracking->addStatus(GbwParcelStatus::of($event));
-                }
-            }
+            $this->appendTrackingEvents($tracking, $statusHistory);
         }
 
         if ($tracking->parcelStatuses === []) {
@@ -161,6 +157,22 @@ class GebruderWeissApi implements CarrierInterface
             }
         }
 
+        if ($tracking->parcelStatuses === []) {
+            $this->appendTrackingEvents($tracking, $data);
+        }
+
         return $tracking;
+    }
+
+    /**
+     * @param array<int|string, mixed> $events
+     */
+    private function appendTrackingEvents(GbwParcelTracking $tracking, array $events): void
+    {
+        foreach ($events as $event) {
+            if (is_array($event) && isset($event['eventCode'], $event['eventDateTime'])) {
+                $tracking->addStatus(GbwParcelStatus::of($event));
+            }
+        }
     }
 }
