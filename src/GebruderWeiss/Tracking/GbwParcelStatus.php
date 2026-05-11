@@ -56,11 +56,17 @@ class GbwParcelStatus implements ParcelStatusInterface
         $entity->statusDate = self::parseDateTime((string) ($event['eventDateTime'] ?? ''));
 
         $text = '';
+        $descriptionTexts = [];
         $description = $event['eventDescription'] ?? null;
         if (is_array($description)) {
-            $resolved = $description['translationResolved'] ?? $description['translationOriginal'] ?? null;
-            if (is_array($resolved) && isset($resolved['text'])) {
-                $text = (string) $resolved['text'];
+            foreach (['translationResolved', 'translationOriginal'] as $translationKey) {
+                $translation = $description[$translationKey] ?? null;
+                if (is_array($translation) && isset($translation['text']) && is_string($translation['text'])) {
+                    $descriptionTexts[] = $translation['text'];
+                    if ($text === '') {
+                        $text = $translation['text'];
+                    }
+                }
             }
         }
         $entity->statusDescription = $text !== '' ? $text : $entity->statusCode;
@@ -70,24 +76,53 @@ class GbwParcelStatus implements ParcelStatusInterface
 
         $eventReasonCode = self::extractFirstString($event['eventReasonCode'] ?? null);
 
-        $entity->delivered = self::isDelivered($entity->statusDescription);
+        $entity->delivered = self::isDelivered(
+            $descriptionTexts,
+            $entity->statusDescription,
+            $entity->statusCode,
+            (string) ($event['eventCode'] ?? ''),
+        );
         $entity->damaged = $myGwCode === 'CRITICAL';
         $entity->customInfo = self::buildCustomInfo($myGwCode, $eventReasonCode);
 
         return $entity;
     }
 
-    private static function isDelivered(string $statusDescription): bool
+    /**
+     * @param string[] $descriptionTexts
+     */
+    private static function isDelivered(
+        array $descriptionTexts,
+        string $statusDescription,
+        string $statusCode,
+        string $eventCode,
+    ): bool
     {
-        $lowerDescription = trim(mb_strtolower($statusDescription));
-        if ($lowerDescription === 'delivered' || $lowerDescription === 'zugestellt') {
-            return true;
+        $texts = $descriptionTexts;
+        $texts[] = $statusDescription;
+
+        foreach ($texts as $text) {
+            $lowerDescription = trim(mb_strtolower($text));
+            if ($lowerDescription === 'delivered' || $lowerDescription === 'zugestellt') {
+                return true;
+            }
+
+            $asciiDescription = self::toAsciiLower($lowerDescription);
+            if (
+                $asciiDescription === 'doruceno'
+                || $asciiDescription === 'delivered'
+                || $asciiDescription === 'zugestellt'
+            ) {
+                return true;
+            }
         }
 
-        $asciiDescription = self::toAsciiLower($lowerDescription);
-        return $asciiDescription === 'doruceno'
-            || $asciiDescription === 'delivered'
-            || $asciiDescription === 'zugestellt';
+        $codes = [
+            strtoupper(trim($statusCode)),
+            strtoupper(trim($eventCode)),
+        ];
+
+        return in_array('*DSC*810', $codes, true);
     }
 
     private static function buildCustomInfo(?string ...$parts): ?string
