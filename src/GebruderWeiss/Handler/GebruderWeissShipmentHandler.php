@@ -249,7 +249,7 @@ class GebruderWeissShipmentHandler extends GebruderWeissApi implements ShipmentH
         return match ($type) {
             ParcelType::Package, ParcelType::PackageOversize => 'BOX',
             ParcelType::PalletEur, ParcelType::PalletCustom => 'EUP',
-            ParcelType::PalletHalf => 'H1P',
+            ParcelType::PalletHalf => 'HPA',
             ParcelType::PalletOneWay => 'EWP',
         };
     }
