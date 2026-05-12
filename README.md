@@ -64,6 +64,7 @@ services:
         phone: '+420 123 456 789'
         email: 'info@myshop.cz'
         houseNumber: '10'
+        # company: 'my-company-code'   # volitelne, pouziva se jen pro GW tracking URL
     )
 
     glsConfig: Ages\ShippingGateway\Gls\Config\GlsConfig(
@@ -252,6 +253,9 @@ $trackingUrl = $gateway->trackingUrl(Carrier::Gls, '1234567890');
 $trackingUrl = $gateway->trackingUrl(Carrier::Ppl, 'KEA12345678');
 $trackingUrl = $gateway->trackingUrl(Carrier::CzechPost, 'DR123456789CZ');
 $trackingUrl = $gateway->trackingUrl(Carrier::GebruderWeiss, '220600001234567895');
+
+// GW public tracking deep-link needs pickupAddress.company in config.
+// PPL public tracking URL uses ?shipmentId={trackingNumber}.
 
 if ($tracking !== null) {
     $tracking->getDelivered();           // bool

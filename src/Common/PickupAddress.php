@@ -13,6 +13,7 @@ readonly class PickupAddress
         public string  $phone,
         public string  $email,
         public ?string $houseNumber = null,
+        public ?string $company = null,
     ) {
     }
 

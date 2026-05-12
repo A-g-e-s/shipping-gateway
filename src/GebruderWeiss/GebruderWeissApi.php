@@ -15,7 +15,8 @@ use GuzzleHttp\Exception\RequestException;
 
 class GebruderWeissApi implements CarrierInterface
 {
-    public const string TrackUrl = 'https://www.gw-world.com/cz/';
+    public const string TrackUrl = 'https://my.gw-world.com/cz/trackntrace/-/search/';
+    public const string TrackUrlFallback = 'https://my.gw-world.com/cz/trackntrace/';
 
     private ?string $token = null {
         get {
@@ -142,7 +143,12 @@ class GebruderWeissApi implements CarrierInterface
 
     public function getTrackingUrl(string $consignmentId): string
     {
-        return self::TrackUrl;
+        $company = trim((string) $this->config->pickupAddress->company);
+        if ($company === '') {
+            return self::TrackUrlFallback;
+        }
+
+        return self::TrackUrl . rawurlencode($company) . '/' . rawurlencode($consignmentId);
     }
 
     /**
