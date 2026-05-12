@@ -8,6 +8,7 @@ class ParcelEntity extends AbstractEntity
 {
     private string $clientReference;
     private int $count;
+    private ?string $note;
     private AddressEntity $pickupAddress;
     private AddressEntity $deliveryAddress;
     private SpecificDeliveryEntity $specificDeliveryEntity;
@@ -20,6 +21,7 @@ class ParcelEntity extends AbstractEntity
     public static function of(
         string $clientReference,
         int $count,
+        ?string $note,
         AddressEntity $pickupAddress,
         AddressEntity $deliveryAddress,
         SpecificDeliveryEntity $specificDeliveryEntity,
@@ -28,6 +30,7 @@ class ParcelEntity extends AbstractEntity
         $entity = new static();
         $entity->clientReference = $clientReference;
         $entity->count = $count;
+        $entity->note = $note;
         $entity->pickupAddress = $pickupAddress;
         $entity->deliveryAddress = $deliveryAddress;
         $entity->specificDeliveryEntity = $specificDeliveryEntity;
@@ -57,7 +60,6 @@ class ParcelEntity extends AbstractEntity
                 [
                     'referenceId' => $this->clientReference,
                     'productType' => $productType,
-                    'note' => '',
                     'cashOnDelivery' => $this->cashOnDeliveryEntity?->toArray(),
                     'shipmentSet' => [
                         'numberOfShipments' => $this->count,
@@ -74,6 +76,10 @@ class ParcelEntity extends AbstractEntity
                 ]
             ]
         ];
+
+        if ($this->note !== null) {
+            $data['shipments'][0]['note'] = $this->note;
+        }
 
         if ($this->specificDeliveryEntity->pdsCode !== null) {
             $data['shipments'][0]['specificDelivery'] = $this->specificDeliveryEntity->toArray();

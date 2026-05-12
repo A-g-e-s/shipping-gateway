@@ -72,7 +72,7 @@ class GebruderWeissLabelGenerator
         $logoHtml = '';
         if ($cfg->logoPath !== null && file_exists($cfg->logoPath)) {
             $path = $this->esc($cfg->logoPath);
-            $logoHtml = "<img src=\"{$path}\" style=\"max-width:24mm; max-height:24mm;\" />";
+            $logoHtml = "<img src=\"{$path}\" style=\"display:block; margin:0 auto; max-width:26mm; max-height:19mm;\" />";
         }
 
         $name2Html = $recipientName2 !== null
@@ -81,11 +81,15 @@ class GebruderWeissLabelGenerator
 
         // COD row: when present, service row grows +5mm, barcode row shrinks -5mm
         $hasCod = $request->cod !== null;
-        $serviceRowHeight = $hasCod ? '15mm' : '10mm';
-        $barcodeRowHeight = $hasCod ? '30mm' : '35mm';
         $codHtml = $hasCod ? $this->buildCodHtml($request->cod) : '';
+        $hasNote = $request->note !== null && trim($request->note) !== '';
+        $noteHtml = $hasNote ? $this->buildNoteHtml($request->note) : '';
+        $serviceRowHeightMm = ($hasCod ? 15 : 10) + ($hasNote ? 9 : 0);
+        $barcodeRowHeightMm = 45 - $serviceRowHeightMm;
+        $serviceRowHeight = $serviceRowHeightMm . 'mm';
+        $barcodeRowHeight = $barcodeRowHeightMm . 'mm';
 
-        // Row heights: 22+38+17+11+11+serviceRow+barcodeRow = 144mm in both cases
+        // Row heights: 22+38+17+11+11+serviceRow+barcodeRow = 144mm in all variants
         return <<<HTML
 <!DOCTYPE html>
 <html>
@@ -108,7 +112,7 @@ table { width: 100%; border-collapse: collapse; }
     <td style="border-bottom:0.5pt solid #000; padding:0; overflow:hidden;">
       <table style="height:22mm;">
         <tr>
-          <td style="width:28mm; border-right:0.5pt solid #000; text-align:center; vertical-align:middle; height:22mm; padding:2mm;">
+          <td style="width:30mm; border-right:0.5pt solid #000; text-align:center; vertical-align:middle; height:22mm; padding:1mm;">
             {$logoHtml}
           </td>
           <td style="font-size:6.5pt; vertical-align:top; padding:1.5mm 1.5mm 0 2mm;">
@@ -189,6 +193,7 @@ table { width: 100%; border-collapse: collapse; }
       <div class="lbl">Cislo zasilky / Service / EP</div>
       <div class="bold">{$this->esc($request->reference)} /{$this->esc($cfg->branchCode)} /</div>
       {$codHtml}
+      {$noteHtml}
     </td>
   </tr>
 
@@ -215,6 +220,18 @@ HTML;
         return '<div style="margin-top:1mm; font-size:7pt;">'
             . '<strong>DOBÍRKA: ' . $amount . '</strong>'
             . $vs
+            . '</div>';
+    }
+
+    private function buildNoteHtml(string $note): string
+    {
+        $text = mb_substr(trim($note), 0, 100);
+
+        return '<div style="margin-top:1mm;">'
+            . '<div class="lbl">Poznamka:</div>'
+            . '<div style="font-size:6.5pt; line-height:1.15; word-break:break-word;">'
+            . $this->esc($text)
+            . '</div>'
             . '</div>';
     }
 

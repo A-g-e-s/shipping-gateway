@@ -18,9 +18,9 @@ use Mpdf\Mpdf;
 
 class PplShipmentHandler extends PplApi implements ShipmentHandlerInterface
 {
-    private const int BATCH_POLL_ATTEMPTS = 30;
-    private const int LABEL_POLL_ATTEMPTS = 30;
-    private const int POLL_DELAY_MICROSECONDS = 500_000;
+    private const int BatchPollAttempts = 30;
+    private const int LabelPollAttempts = 30;
+    private const int PollDelayMicroseconds = 1_000_000;
 
     public function getCarrier(): Carrier
     {
@@ -41,7 +41,7 @@ class PplShipmentHandler extends PplApi implements ShipmentHandlerInterface
         $cod = $this->buildCod($request);
         $specific = SpecificDeliveryEntity::of($request->parcelShopCode);
         $count = count($request->parcels);
-        $entity = ParcelEntity::of($request->reference, $count, $pickup, $delivery, $specific, $cod);
+        $entity = ParcelEntity::of($request->reference, $count, $request->note, $pickup, $delivery, $specific, $cod);
 
         $batchId = $this->createBatch($entity);
         $status = $this->waitForBatch($batchId);
@@ -56,12 +56,12 @@ class PplShipmentHandler extends PplApi implements ShipmentHandlerInterface
 
     private function waitForBatch(string $batchId): \stdClass
     {
-        for ($i = 0; $i < self::BATCH_POLL_ATTEMPTS; $i++) {
+        for ($i = 0; $i < self::BatchPollAttempts; $i++) {
             $status = $this->getStatus($batchId);
             if ($status !== null) {
                 return $status;
             }
-            usleep(self::POLL_DELAY_MICROSECONDS);
+            usleep(self::PollDelayMicroseconds);
         }
         throw new ShippingException('PPL: batch processing timeout for batch ' . $batchId);
     }
@@ -159,7 +159,7 @@ class PplShipmentHandler extends PplApi implements ShipmentHandlerInterface
     {
         $lastException = null;
 
-        for ($i = 0; $i < self::LABEL_POLL_ATTEMPTS; $i++) {
+        for ($i = 0; $i < self::LabelPollAttempts; $i++) {
             try {
                 return $this->getLabel($labelUrl);
             } catch (ShippingException $e) {
@@ -169,7 +169,7 @@ class PplShipmentHandler extends PplApi implements ShipmentHandlerInterface
                 }
             }
 
-            usleep(self::POLL_DELAY_MICROSECONDS);
+            usleep(self::PollDelayMicroseconds);
         }
 
         if ($lastException instanceof ShippingException) {

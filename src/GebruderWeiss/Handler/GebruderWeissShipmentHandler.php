@@ -170,7 +170,7 @@ class GebruderWeissShipmentHandler extends GebruderWeissApi implements ShipmentH
         if ($request->note !== null) {
             $requirements['note'] = [
                 'noteType' => 'GENERAL',
-                'noteText' => ['text' => mb_substr($request->note, 0, 210)],
+                'noteText' => ['text' => mb_substr($request->note, 0, 100)],
             ];
         }
 

@@ -42,6 +42,7 @@ class GlsShipmentHandler extends GlsApi implements ShipmentHandlerInterface
             $pickup,
             $delivery,
             $services,
+            $request->note,
         );
 
         $data = $this->printLabels($entity);
