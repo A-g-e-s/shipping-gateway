@@ -53,6 +53,25 @@ class ShippingGateway
     }
 
     /**
+     * @throws ShippingException
+     */
+    public function trackingUrl(Carrier $carrier, string $consignmentId): string
+    {
+        try {
+            return match ($carrier) {
+                Carrier::Gls           => $this->glsShipmentHandler()->getTrackingUrl($consignmentId),
+                Carrier::Ppl           => $this->pplShipmentHandler()->getTrackingUrl($consignmentId),
+                Carrier::CzechPost     => $this->czechPostShipmentHandler()->getTrackingUrl($consignmentId),
+                Carrier::GebruderWeiss => $this->gwShipmentHandler()->getTrackingUrl($consignmentId),
+            };
+        } catch (ShippingException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            throw new ShippingException($e->getMessage(), 0, $e);
+        }
+    }
+
+    /**
      * @return ShipmentLabel[]
      * @throws ShippingException
      */

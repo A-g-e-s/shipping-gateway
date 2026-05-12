@@ -15,6 +15,8 @@ use GuzzleHttp\Exception\RequestException;
 
 class GebruderWeissApi implements CarrierInterface
 {
+    public const string TrackUrl = 'https://www.gw-world.com/cz/';
+
     private ?string $token = null {
         get {
             if ($this->token !== null) {
@@ -136,6 +138,11 @@ class GebruderWeissApi implements CarrierInterface
         } catch (RequestException $e) {
             throw new ShippingException('GBW tracking error: ' . $e->getMessage());
         }
+    }
+
+    public function getTrackingUrl(string $consignmentId): string
+    {
+        return self::TrackUrl;
     }
 
     /**

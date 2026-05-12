@@ -248,6 +248,11 @@ $tracking = $gateway->tracking(Carrier::Ppl, 'KEA12345678');
 $tracking = $gateway->tracking(Carrier::CzechPost, 'DR123456789CZ');
 $tracking = $gateway->tracking(Carrier::GebruderWeiss, '220600001234567895'); // SSCC kód zásilky
 
+$trackingUrl = $gateway->trackingUrl(Carrier::Gls, '1234567890');
+$trackingUrl = $gateway->trackingUrl(Carrier::Ppl, 'KEA12345678');
+$trackingUrl = $gateway->trackingUrl(Carrier::CzechPost, 'DR123456789CZ');
+$trackingUrl = $gateway->trackingUrl(Carrier::GebruderWeiss, '220600001234567895');
+
 if ($tracking !== null) {
     $tracking->getDelivered();           // bool
     $tracking->getDeliveredDate();       // ?DateTimeImmutable
@@ -264,6 +269,9 @@ if ($tracking !== null) {
     }
 }
 ```
+
+> `trackingUrl()` vrací veřejnou stránku sledování dopravce.  
+> U GLS a České pošty je URL předvyplněná číslem zásilky, u PPL a Gebrüder Weiss vede na jejich oficiální tracking stránku.
 
 > **Gebrüder Weiss:** tracking probíhá přes SSCC kód vrácený v `$label->trackingNumber`.  
 > API vrací aktuální stav zásilky; `null` znamená, že zásilka ještě není v systému GBW (zpoždění po odeslání objednávky).

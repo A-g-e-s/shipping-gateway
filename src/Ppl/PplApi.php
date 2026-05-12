@@ -18,6 +18,8 @@ use GuzzleHttp\Exception\RequestException;
 
 class PplApi implements CarrierInterface
 {
+    public const string TrackUrl = 'https://www.ppl.cz/vyhledat-zasilku';
+
     private ?string $token = null {
         get {
             if ($this->token !== null) {
@@ -307,6 +309,11 @@ class PplApi implements CarrierInterface
         }
 
         return $entity;
+    }
+
+    public function getTrackingUrl(string $consignmentId): string
+    {
+        return self::TrackUrl;
     }
 
     private function isDelivered(string $states): bool

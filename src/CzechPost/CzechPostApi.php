@@ -14,6 +14,8 @@ use Random\RandomException;
 
 class CzechPostApi implements CarrierInterface
 {
+    public const string TrackUrl = 'https://www.postaonline.cz/trackandtrace/-/zasilka/';
+
     private Client $httpClient;
 
     public function __construct(protected readonly CzechPostConfig $config)
@@ -180,5 +182,10 @@ class CzechPostApi implements CarrierInterface
         } catch (\Exception) {
         }
         return null;
+    }
+
+    public function getTrackingUrl(string $consignmentId): string
+    {
+        return self::TrackUrl . rawurlencode($consignmentId);
     }
 }

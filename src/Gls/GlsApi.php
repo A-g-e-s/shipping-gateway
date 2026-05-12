@@ -18,6 +18,8 @@ use UnexpectedValueException;
 
 class GlsApi implements CarrierInterface
 {
+    public const string TrackUrl = 'https://gls-group.com/CZ/cs/sledovani-zasilek/?match=';
+
     private Client $httpClient;
 
     public function __construct(protected readonly GlsConfig $config)
@@ -127,6 +129,11 @@ class GlsApi implements CarrierInterface
             return $parcelTracking;
         }
         return null;
+    }
+
+    public function getTrackingUrl(string $consignmentId): string
+    {
+        return self::TrackUrl . rawurlencode($consignmentId);
     }
 
     /**
