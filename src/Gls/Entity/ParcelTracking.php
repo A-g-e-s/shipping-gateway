@@ -90,8 +90,10 @@ class ParcelTracking implements ParcelTrackingInterface
             'clientReference' => $this->clientReference,
             'weight' => $this->weight,
             'delivered' => $this->delivered,
+            'deliveredDate' => $this->deliveredDate,
             'damaged' => $this->damaged,
             'parcelStatus' => $r,
+            'parcelStatuses' => $r,
         ]);
     }
 }

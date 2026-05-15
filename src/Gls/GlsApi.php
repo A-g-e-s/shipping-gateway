@@ -106,29 +106,87 @@ class GlsApi implements CarrierInterface
     public function getParcelTracking(string $consignmentId): ?ParcelTrackingInterface
     {
         $tracking = $this->parcelStatuses($consignmentId);
-        if (isset($tracking->DeliveryCountryCode, $tracking->DeliveryZipCode, $tracking->ParcelNumber, $tracking->ClientReference, $tracking->Weight)) {
-            $parcelTracking = ParcelTracking::of(
-                $tracking->DeliveryCountryCode,
-                $tracking->DeliveryZipCode,
-                $tracking->ParcelNumber,
-                $tracking->ClientReference,
-                $tracking->Weight,
-            );
-            foreach ($tracking->ParcelStatusList as $statusLine) {
-                if (isset($statusLine->DepotCity, $statusLine->DepotNumber, $statusLine->StatusCode, $statusLine->StatusDate, $statusLine->StatusDescription, $statusLine->StatusInfo)) {
-                    $parcelTracking->addStatus(ParcelStatus::of(
-                        $statusLine->DepotCity,
-                        $statusLine->DepotNumber,
-                        $statusLine->StatusCode,
-                        $statusLine->StatusDate,
-                        $statusLine->StatusDescription,
-                        $statusLine->StatusInfo,
-                    ));
-                }
-            }
-            return $parcelTracking;
+        $statusErrors = $this->readObjectListProperty($tracking, 'GetParcelStatusErrors');
+        if ($statusErrors !== []) {
+            $errors = implode(', ', array_map(
+                static fn(\stdClass $error): string => sprintf(
+                    '%s (%s)',
+                    self::readScalarProperty($error, 'ErrorCode', 'unknown'),
+                    self::readScalarProperty($error, 'ErrorDescription', 'unknown error'),
+                ),
+                $statusErrors,
+            ));
+            throw new ShippingException('GLS: ' . $errors);
         }
-        return null;
+
+        $parcelNumber = self::readScalarProperty($tracking, 'ParcelNumber', $consignmentId);
+        if ($parcelNumber === '') {
+            return null;
+        }
+
+        $parcelTracking = ParcelTracking::of(
+            self::readScalarProperty($tracking, 'DeliveryCountryCode'),
+            self::readScalarProperty($tracking, 'DeliveryZipCode'),
+            $parcelNumber,
+            self::readScalarProperty($tracking, 'ClientReference'),
+            self::readFloatProperty($tracking, 'Weight'),
+        );
+
+        foreach ($this->readObjectListProperty($tracking, 'ParcelStatusList') as $statusLine) {
+            $statusCode = self::readScalarProperty($statusLine, 'StatusCode');
+            $statusDate = self::readScalarProperty($statusLine, 'StatusDate');
+            $statusDescription = self::readScalarProperty($statusLine, 'StatusDescription');
+
+            if ($statusCode === '' && $statusDate === '' && $statusDescription === '') {
+                continue;
+            }
+
+            $parcelTracking->addStatus(ParcelStatus::of(
+                self::readScalarProperty($statusLine, 'DepotCity'),
+                self::readScalarProperty($statusLine, 'DepotNumber'),
+                $statusCode,
+                $statusDate,
+                $statusDescription,
+                self::readScalarProperty($statusLine, 'StatusInfo'),
+            ));
+        }
+
+        return $parcelTracking;
+    }
+
+    private static function readScalarProperty(\stdClass $source, string $property, string $default = ''): string
+    {
+        $value = $source->{$property} ?? null;
+
+        if (is_string($value) || is_int($value) || is_float($value) || is_bool($value)) {
+            return (string) $value;
+        }
+
+        return $default;
+    }
+
+    private static function readFloatProperty(\stdClass $source, string $property, float $default = 0.0): float
+    {
+        $value = $source->{$property} ?? null;
+
+        if (is_int($value) || is_float($value) || (is_string($value) && is_numeric($value))) {
+            return (float) $value;
+        }
+
+        return $default;
+    }
+
+    /**
+     * @return \stdClass[]
+     */
+    private function readObjectListProperty(\stdClass $source, string $property): array
+    {
+        $value = $source->{$property} ?? null;
+        if (!is_array($value)) {
+            return [];
+        }
+
+        return array_values(array_filter($value, static fn(mixed $item): bool => $item instanceof \stdClass));
     }
 
     public function getTrackingUrl(string $consignmentId): string

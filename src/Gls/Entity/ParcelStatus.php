@@ -74,11 +74,15 @@ class ParcelStatus implements ParcelStatusInterface
     private static function parseDateTime(string $dateString): ?\DateTimeImmutable
     {
         try {
-            if (preg_match('/\/Date\((\d+)([+-]\d{4})\)\//', $dateString, $matches)) {
-                $date = new \DateTimeImmutable('@' . ((int)$matches[1] / 1000));
-                return $date->setTimezone(new \DateTimeZone($matches[2]));
+            if (preg_match('/\/Date\((\d+)([+-]\d{4})?\)\//', $dateString, $matches) === 1) {
+                $date = new \DateTimeImmutable('@' . ((int) $matches[1] / 1000));
+                if (isset($matches[2]) && $matches[2] !== '') {
+                    return $date->setTimezone(new \DateTimeZone($matches[2]));
+                }
+                return $date;
             }
-            return null;
+
+            return new \DateTimeImmutable($dateString);
         } catch (\Exception) {
             return null;
         }
