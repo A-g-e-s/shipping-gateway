@@ -93,7 +93,7 @@ class GlsApi implements CarrierInterface
         $statusRequest = [
             'ParcelNumber' => $parcelId,
             'ReturnPOD' => true,
-            'LanguageIsoCode' => 'CZ'
+            'LanguageIsoCode' => 'CS'
         ];
         $request = $this->getRequestPayload($statusRequest, RequestObject::ParcelStatuses);
         $data = json_decode($this->getResponse(Method::ParcelStatuses, $request));
