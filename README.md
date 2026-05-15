@@ -236,8 +236,8 @@ $tracking = $gateway->tracking($label->carrier, $label->trackingNumber);
 > **Více balíků — GLS / PPL / Czech Post:** API vrátí jeden kombinovaný PDF soubor pro všechny balíky.  
 > Každý `ShipmentLabel` má svůj `trackingNumber`, `labelPdf` je u všech shodné (kombinovaný tisk).
 >
-> **Více balíků — Gebrüder Weiss:** každý balík dostane vlastní SSCC kód a samostatné PDF etiket.  
-> `ShipmentLabel[]` má tolik prvků, kolik je zásilek — každý s unikátním `trackingNumber` (SSCC) a `labelPdf`.
+> **Více balíků — Gebrüder Weiss:** každý balík dostane vlastní SSCC kód v etiketě a samostatné PDF etiket.  
+> `ShipmentLabel[]` má tolik prvků, kolik je zásilek — pro tracking mají všechny stejný `trackingNumber` (`reference` / `orderId`), `labelPdf` je u prvního prvku a SSCC zůstává součástí etikety.
 
 ---
 
@@ -247,12 +247,12 @@ $tracking = $gateway->tracking($label->carrier, $label->trackingNumber);
 $tracking = $gateway->tracking(Carrier::Gls, '1234567890');
 $tracking = $gateway->tracking(Carrier::Ppl, 'KEA12345678');
 $tracking = $gateway->tracking(Carrier::CzechPost, 'DR123456789CZ');
-$tracking = $gateway->tracking(Carrier::GebruderWeiss, '220600001234567895'); // SSCC kód zásilky
+$tracking = $gateway->tracking(Carrier::GebruderWeiss, 'ORDER-2026-001'); // reference zásilky / orderId
 
 $trackingUrl = $gateway->trackingUrl(Carrier::Gls, '1234567890');
 $trackingUrl = $gateway->trackingUrl(Carrier::Ppl, 'KEA12345678');
 $trackingUrl = $gateway->trackingUrl(Carrier::CzechPost, 'DR123456789CZ');
-$trackingUrl = $gateway->trackingUrl(Carrier::GebruderWeiss, '220600001234567895');
+$trackingUrl = $gateway->trackingUrl(Carrier::GebruderWeiss, 'ORDER-2026-001');
 
 // GW public tracking deep-link needs pickupAddress.company in config.
 // PPL public tracking URL uses ?shipmentId={trackingNumber}.
@@ -277,7 +277,7 @@ if ($tracking !== null) {
 > `trackingUrl()` vrací veřejnou stránku sledování dopravce.  
 > U GLS a České pošty je URL předvyplněná číslem zásilky, u PPL a Gebrüder Weiss vede na jejich oficiální tracking stránku.
 
-> **Gebrüder Weiss:** tracking probíhá přes SSCC kód vrácený v `$label->trackingNumber`.  
+> **Gebrüder Weiss:** tracking probíhá přes reference/orderId vrácené v `$label->trackingNumber`.  
 > API vrací aktuální stav zásilky; `null` znamená, že zásilka ještě není v systému GBW (zpoždění po odeslání objednávky).
 
 ---

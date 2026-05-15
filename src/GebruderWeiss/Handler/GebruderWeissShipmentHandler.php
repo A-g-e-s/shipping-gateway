@@ -37,8 +37,8 @@ class GebruderWeissShipmentHandler extends GebruderWeissApi implements ShipmentH
         $combinedPdf = $this->labelGenerator->generateLabels($request, $ssccCodes);
 
         $labels = [];
-        foreach ($ssccCodes as $index => $sscc) {
-            $labels[] = new ShipmentLabel(Carrier::GebruderWeiss, '00' . $sscc, $index === 0 ? $combinedPdf : '');
+        foreach (array_keys($ssccCodes) as $index) {
+            $labels[] = new ShipmentLabel(Carrier::GebruderWeiss, $request->reference, $index === 0 ? $combinedPdf : '');
         }
         return $labels;
     }
