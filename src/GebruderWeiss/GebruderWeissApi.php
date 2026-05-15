@@ -108,7 +108,7 @@ class GebruderWeissApi implements CarrierInterface
     {
         try {
             $response = $this->httpClient->get(
-                $this->config->trackingUrl . '/orders/' . urlencode($consignmentId) . '/packages/status',
+                $this->config->trackingUrl . '/orders/' . urlencode($consignmentId) . '/status',
                 [
                     'query' => [
                         'startIndex' => 1,
