@@ -10,6 +10,8 @@ use Ages\ShippingGateway\Common\ShippingException;
 use Ages\ShippingGateway\GebruderWeiss\Config\GebruderWeissConfig;
 use Ages\ShippingGateway\GebruderWeiss\Tracking\GbwParcelStatus;
 use Ages\ShippingGateway\GebruderWeiss\Tracking\GbwParcelTracking;
+use Ages\ShippingGateway\GebruderWeiss\Values\Method;
+use Ages\ShippingGateway\GebruderWeiss\Values\TokenScope;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\RequestException;
 
@@ -18,23 +20,8 @@ class GebruderWeissApi implements CarrierInterface
     public const string TrackUrl = 'https://my.gw-world.com/cz/trackntrace/-/search/';
     public const string TrackUrlFallback = 'https://my.gw-world.com/cz/trackntrace/';
 
-    private ?string $token = null {
-        get {
-            if ($this->token !== null) {
-                return $this->token;
-            }
-            return $this->token = $this->fetchToken('API_CUSAPI_TRANSPORT_ORDER_CREATE');
-        }
-    }
-
-    private ?string $trackingToken = null {
-        get {
-            if ($this->trackingToken !== null) {
-                return $this->trackingToken;
-            }
-            return $this->trackingToken = $this->fetchToken('API_CUSTNT_PACKAGES_STATUS_READ');
-        }
-    }
+    /** @var array<string, string> */
+    private array $tokens = [];
 
     private Client $httpClient;
 
@@ -43,7 +30,12 @@ class GebruderWeissApi implements CarrierInterface
         $this->httpClient = new Client();
     }
 
-    private function fetchToken(string $scope): string
+    private function getToken(TokenScope $scope): string
+    {
+        return $this->tokens[$scope->value] ??= $this->fetchToken($scope);
+    }
+
+    private function fetchToken(TokenScope $scope): string
     {
         try {
             $response = $this->httpClient->post($this->config->oauthUrl, [
@@ -51,11 +43,11 @@ class GebruderWeissApi implements CarrierInterface
                     'grant_type' => 'client_credentials',
                     'client_id' => $this->config->clientId,
                     'client_secret' => $this->config->clientSecret,
-                    'scope' => $scope,
+                    'scope' => $scope->value,
                 ],
             ]);
 
-            $data = json_decode((string) $response->getBody(), true);
+            $data = json_decode((string)$response->getBody(), true);
 
             if (!is_array($data) || !isset($data['access_token']) || !is_string($data['access_token'])) {
                 throw new ShippingException('GBW: Token was not created');
@@ -74,10 +66,10 @@ class GebruderWeissApi implements CarrierInterface
     public function createTransportOrder(array $payload): void
     {
         try {
-            $response = $this->httpClient->post($this->config->apiUrl . '/transport-order', [
+            $response = $this->httpClient->post($this->config->apiUrl . '/' . Method::TransportOrder->value, [
                 'json' => $payload,
                 'headers' => [
-                    'Authorization' => 'Bearer ' . $this->token,
+                    'Authorization' => 'Bearer ' . $this->getToken(TokenScope::TransportOrder),
                     'Accept' => 'application/json',
                     'Content-Type' => 'application/json',
                     'accept-language' => 'cs',
@@ -97,7 +89,7 @@ class GebruderWeissApi implements CarrierInterface
                 throw new ShippingException('GBW: Conflict – order already exists');
             }
 
-            $body = (string) $response->getBody();
+            $body = (string)$response->getBody();
             throw new ShippingException('GBW: Unexpected HTTP ' . $status . ': ' . $body);
         } catch (RequestException $e) {
             throw new ShippingException('GBW HTTP error: ' . $e->getMessage());
@@ -108,14 +100,14 @@ class GebruderWeissApi implements CarrierInterface
     {
         try {
             $response = $this->httpClient->get(
-                $this->config->trackingUrl . '/orders/' . urlencode($consignmentId) . '/status',
+                $this->config->trackingUrl . '/' . Method::OrderStatus->path(urlencode($consignmentId)),
                 [
                     'query' => [
                         'startIndex' => 1,
-                        'pageSize' => 10,
+                        'pageSize' => 20,
                     ],
                     'headers' => [
-                        'Authorization' => 'Bearer ' . $this->trackingToken,
+                        'Authorization' => 'Bearer ' . $this->getToken(TokenScope::OrdersStatus),
                         'Accept' => 'application/json',
                         'accept-language' => 'cs',
                     ],
@@ -133,7 +125,7 @@ class GebruderWeissApi implements CarrierInterface
                 throw new ShippingException('GBW tracking: HTTP ' . $status);
             }
 
-            $data = json_decode((string) $response->getBody(), true);
+            $data = json_decode((string)$response->getBody(), true);
 
             if (!is_array($data)) {
                 throw new ShippingException('GBW tracking: Invalid response');
@@ -145,9 +137,50 @@ class GebruderWeissApi implements CarrierInterface
         }
     }
 
+    public function getPackageTracking(string $barcode): ?ParcelTrackingInterface
+    {
+        try {
+            $response = $this->httpClient->get(
+                $this->config->trackingUrl . '/' . Method::PackageStatus->path(urlencode($barcode)),
+                [
+                    'query'       => [
+                        'startIndex' => 1,
+                        'pageSize'   => 20,
+                    ],
+                    'headers'     => [
+                        'Authorization'   => 'Bearer ' . $this->getToken(TokenScope::PackagesStatus),
+                        'Accept'          => 'application/json',
+                        'accept-language' => 'cs',
+                    ],
+                    'http_errors' => false,
+                ]
+            );
+
+            $status = $response->getStatusCode();
+
+            if ($status === 404) {
+                return null;
+            }
+
+            if ($status !== 200) {
+                throw new ShippingException('GBW package tracking: HTTP ' . $status);
+            }
+
+            $data = json_decode((string) $response->getBody(), true);
+
+            if (!is_array($data)) {
+                throw new ShippingException('GBW package tracking: Invalid response');
+            }
+
+            return $this->parseTrackingResponse($barcode, $data);
+        } catch (RequestException $e) {
+            throw new ShippingException('GBW package tracking error: ' . $e->getMessage());
+        }
+    }
+
     public function getTrackingUrl(string $consignmentId): string
     {
-        $company = trim((string) $this->config->pickupAddress->company);
+        $company = trim((string)$this->config->pickupAddress->company);
         if ($company === '') {
             return self::TrackUrlFallback;
         }
