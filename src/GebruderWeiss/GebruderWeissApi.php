@@ -98,9 +98,14 @@ class GebruderWeissApi implements CarrierInterface
 
     public function getParcelTracking(string $consignmentId): ?ParcelTrackingInterface
     {
+        $internalId = $this->resolveInternalOrderId($consignmentId);
+        if ($internalId === null) {
+            return null;
+        }
+
         try {
             $response = $this->httpClient->get(
-                $this->config->trackingUrl . '/' . Method::OrderStatus->path(urlencode($consignmentId)),
+                $this->config->trackingUrl . '/' . Method::OrderStatus->path(urlencode($internalId)),
                 [
                     'query' => [
                         'startIndex' => 1,
@@ -132,6 +137,49 @@ class GebruderWeissApi implements CarrierInterface
             }
 
             return $this->parseTrackingResponse($consignmentId, $data);
+        } catch (RequestException $e) {
+            throw new ShippingException('GBW tracking error: ' . $e->getMessage());
+        }
+    }
+
+    private function resolveInternalOrderId(string $referenceNumber): ?string
+    {
+        try {
+            $response = $this->httpClient->get(
+                $this->config->trackingUrl . '/' . Method::OrderCurrentStatus->path(urlencode($referenceNumber)),
+                [
+                    'headers' => [
+                        'Authorization' => 'Bearer ' . $this->getToken(TokenScope::OrdersStatus),
+                        'Accept' => 'application/json',
+                        'accept-language' => 'cs',
+                    ],
+                    'http_errors' => false,
+                ]
+            );
+
+            $status = $response->getStatusCode();
+
+            if ($status === 404) {
+                return null;
+            }
+
+            if ($status !== 200) {
+                throw new ShippingException('GBW tracking current-status: HTTP ' . $status);
+            }
+
+            $data = json_decode((string)$response->getBody(), true);
+
+            if (!is_array($data)) {
+                throw new ShippingException('GBW tracking current-status: Invalid response');
+            }
+
+            $orderId = $data['orderReferenced']['orderId'] ?? null;
+
+            if (!is_string($orderId) || $orderId === '') {
+                throw new ShippingException('GBW tracking current-status: Missing orderId');
+            }
+
+            return $orderId;
         } catch (RequestException $e) {
             throw new ShippingException('GBW tracking error: ' . $e->getMessage());
         }
