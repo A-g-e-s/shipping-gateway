@@ -208,9 +208,9 @@ class GebruderWeissApi implements CarrierInterface
             return null;
         }
 
-        $refs = $list[0]['orderReferenced']['references'] ?? null;
-        if (is_array($refs) && isset($refs[0]['orderId']) && is_string($refs[0]['orderId']) && $refs[0]['orderId'] !== '') {
-            return $refs[0]['orderId'];
+        $orderId = $list[0]['orderReferenced']['orderId'] ?? null;
+        if (is_string($orderId) && $orderId !== '') {
+            return $orderId;
         }
 
         return null;
