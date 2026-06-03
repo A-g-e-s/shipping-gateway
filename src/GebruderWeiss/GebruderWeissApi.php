@@ -150,7 +150,7 @@ class GebruderWeissApi implements CarrierInterface
             $dateTo = $base->modify('+8 days')->format('Y-m-d');
         } else {
             $now = new \DateTimeImmutable();
-            $dateFrom = $now->modify('-14 days')->format('Y-m-d');
+            $dateFrom = $now->modify('-10 days')->format('Y-m-d');
             $dateTo = $now->format('Y-m-d');
         }
 
@@ -170,7 +170,7 @@ class GebruderWeissApi implements CarrierInterface
                     'headers' => [
                         'Authorization'   => 'Bearer ' . $this->getToken(TokenScope::OrdersStatus),
                         'Accept'          => 'application/json',
-                        'accept-language' => 'cs',
+                        'accept-language' => 'cs-CZ',
                     ],
                     'http_errors' => false,
                 ]
