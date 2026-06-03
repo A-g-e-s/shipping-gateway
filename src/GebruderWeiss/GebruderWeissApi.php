@@ -203,20 +203,14 @@ class GebruderWeissApi implements CarrierInterface
      */
     private function extractOrderId(array $data): ?string
     {
-        // { "orders": [{ "orderId": "8570422504", ... }] }
-        $orders = $data['orders'] ?? null;
-        if (is_array($orders) && isset($orders[0]['orderId']) && is_string($orders[0]['orderId']) && $orders[0]['orderId'] !== '') {
-            return $orders[0]['orderId'];
+        $list = $data['orderStatusList'] ?? null;
+        if (!is_array($list) || !isset($list[0])) {
+            return null;
         }
 
-        // [{ "orderId": "8570422504", ... }]
-        if (isset($data[0]['orderId']) && is_string($data[0]['orderId']) && $data[0]['orderId'] !== '') {
-            return $data[0]['orderId'];
-        }
-
-        // { "orderId": "8570422504" }
-        if (isset($data['orderId']) && is_string($data['orderId']) && $data['orderId'] !== '') {
-            return $data['orderId'];
+        $refs = $list[0]['orderReferenced']['references'] ?? null;
+        if (is_array($refs) && isset($refs[0]['orderId']) && is_string($refs[0]['orderId']) && $refs[0]['orderId'] !== '') {
+            return $refs[0]['orderId'];
         }
 
         return null;
