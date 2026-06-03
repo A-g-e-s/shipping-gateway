@@ -259,12 +259,12 @@ class GebruderWeissApi implements CarrierInterface
 
     public function getTrackingUrl(string $consignmentId): string
     {
-        $company = trim((string)$this->config->pickupAddress->company);
-        if ($company === '') {
+        $city = trim($this->config->pickupAddress->city);
+        if ($city === '') {
             return self::TrackUrlFallback;
         }
 
-        return self::TrackUrl . rawurlencode($company) . '/' . rawurlencode($consignmentId);
+        return self::TrackUrl . rawurlencode($city) . '/' . rawurlencode($consignmentId);
     }
 
     /**
