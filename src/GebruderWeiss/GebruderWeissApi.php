@@ -96,9 +96,9 @@ class GebruderWeissApi implements CarrierInterface
         }
     }
 
-    public function getParcelTracking(string $consignmentId): ?ParcelTrackingInterface
+    public function getParcelTracking(string $consignmentId, ?\DateTimeInterface $createdAt = null): ?ParcelTrackingInterface
     {
-        $internalId = $this->resolveInternalOrderId($consignmentId);
+        $internalId = $this->resolveInternalOrderId($consignmentId, $createdAt);
         if ($internalId === null) {
             return null;
         }
@@ -142,15 +142,34 @@ class GebruderWeissApi implements CarrierInterface
         }
     }
 
-    private function resolveInternalOrderId(string $referenceNumber): ?string
+    private function resolveInternalOrderId(string $referenceNumber, ?\DateTimeInterface $createdAt): ?string
     {
+        if ($createdAt !== null) {
+            $base = \DateTimeImmutable::createFromInterface($createdAt);
+            $dateFrom = $base->format('Y-m-d');
+            $dateTo = $base->modify('+8 days')->format('Y-m-d');
+        } else {
+            $now = new \DateTimeImmutable();
+            $dateFrom = $now->modify('-14 days')->format('Y-m-d');
+            $dateTo = $now->format('Y-m-d');
+        }
+
         try {
             $response = $this->httpClient->get(
-                $this->config->trackingUrl . '/' . Method::OrderCurrentStatus->path(urlencode($referenceNumber)),
+                $this->config->trackingUrl . '/' . Method::OrdersSearch->value,
                 [
+                    'query' => [
+                        'customerId'   => $this->config->customerId,
+                        'reference'    => $referenceNumber,
+                        'dateFrom'     => $dateFrom,
+                        'dateTo'       => $dateTo,
+                        'calculateETA' => 'false',
+                        'startIndex'   => 1,
+                        'pageSize'     => 10,
+                    ],
                     'headers' => [
-                        'Authorization' => 'Bearer ' . $this->getToken(TokenScope::OrdersStatus),
-                        'Accept' => 'application/json',
+                        'Authorization'   => 'Bearer ' . $this->getToken(TokenScope::OrdersStatus),
+                        'Accept'          => 'application/json',
                         'accept-language' => 'cs',
                     ],
                     'http_errors' => false,
@@ -164,25 +183,43 @@ class GebruderWeissApi implements CarrierInterface
             }
 
             if ($status !== 200) {
-                throw new ShippingException('GBW tracking current-status: HTTP ' . $status);
+                throw new ShippingException('GBW tracking search: HTTP ' . $status);
             }
 
-            $data = json_decode((string)$response->getBody(), true);
+            $data = json_decode((string) $response->getBody(), true);
 
             if (!is_array($data)) {
-                throw new ShippingException('GBW tracking current-status: Invalid response');
+                throw new ShippingException('GBW tracking search: Invalid response');
             }
 
-            $orderId = $data['orderReferenced']['orderId'] ?? null;
-
-            if (!is_string($orderId) || $orderId === '') {
-                throw new ShippingException('GBW tracking current-status: Missing orderId');
-            }
-
-            return $orderId;
+            return $this->extractOrderId($data);
         } catch (RequestException $e) {
             throw new ShippingException('GBW tracking error: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     */
+    private function extractOrderId(array $data): ?string
+    {
+        // { "orders": [{ "orderId": "8570422504", ... }] }
+        $orders = $data['orders'] ?? null;
+        if (is_array($orders) && isset($orders[0]['orderId']) && is_string($orders[0]['orderId']) && $orders[0]['orderId'] !== '') {
+            return $orders[0]['orderId'];
+        }
+
+        // [{ "orderId": "8570422504", ... }]
+        if (isset($data[0]['orderId']) && is_string($data[0]['orderId']) && $data[0]['orderId'] !== '') {
+            return $data[0]['orderId'];
+        }
+
+        // { "orderId": "8570422504" }
+        if (isset($data['orderId']) && is_string($data['orderId']) && $data['orderId'] !== '') {
+            return $data['orderId'];
+        }
+
+        return null;
     }
 
     public function getPackageTracking(string $barcode): ?ParcelTrackingInterface

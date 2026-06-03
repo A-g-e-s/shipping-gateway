@@ -6,10 +6,10 @@ namespace Ages\ShippingGateway\GebruderWeiss\Values;
 
 enum Method: string
 {
-    case TransportOrder      = 'transport-order';
-    case OrderCurrentStatus  = 'orders/%s/current-status';
-    case OrderStatus         = 'orders/%s/status';
-    case PackageStatus       = 'packages/%s/status';
+    case TransportOrder = 'transport-order';
+    case OrdersSearch   = 'orders/current-status';
+    case OrderStatus    = 'orders/%s/status';
+    case PackageStatus  = 'packages/%s/status';
 
     public function path(string ...$params): string
     {

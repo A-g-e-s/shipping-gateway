@@ -36,14 +36,14 @@ class ShippingGateway
     /**
      * @throws ShippingException
      */
-    public function tracking(Carrier $carrier, string $consignmentId): ?ParcelTrackingInterface
+    public function tracking(Carrier $carrier, string $consignmentId, ?\DateTimeInterface $createdAt = null): ?ParcelTrackingInterface
     {
         try {
             return match ($carrier) {
                 Carrier::Gls           => $this->glsShipmentHandler()->getParcelTracking($consignmentId),
                 Carrier::Ppl           => $this->pplShipmentHandler()->getParcelTracking($consignmentId),
                 Carrier::CzechPost     => $this->czechPostShipmentHandler()->getParcelTracking($consignmentId),
-                Carrier::GebruderWeiss => $this->gwShipmentHandler()->getParcelTracking($consignmentId),
+                Carrier::GebruderWeiss => $this->gwShipmentHandler()->getParcelTracking($consignmentId, $createdAt),
             };
         } catch (ShippingException $e) {
             throw $e;
