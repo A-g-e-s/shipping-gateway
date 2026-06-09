@@ -17,8 +17,8 @@ use GuzzleHttp\Exception\RequestException;
 
 class GebruderWeissApi implements CarrierInterface
 {
-    public const string TrackUrl = 'https://my.gw-world.com/cz/trackntrace/-/search/';
-    public const string TrackUrlFallback = 'https://my.gw-world.com/cz/trackntrace/';
+    public const string TrackUrl = 'https://my.gw-world.com/cs/trackntrace/-/search/';
+    public const string TrackUrlFallback = 'https://my.gw-world.com/cs/trackntrace/';
 
     /** @var array<string, string> */
     private array $tokens = [];

@@ -14,6 +14,8 @@ use Ages\ShippingGateway\GebruderWeiss\Config\GebruderWeissConfig;
 use Ages\ShippingGateway\GebruderWeiss\Handler\GebruderWeissShipmentHandler;
 use Ages\ShippingGateway\Gls\Config\GlsConfig;
 use Ages\ShippingGateway\Gls\Handler\GlsShipmentHandler;
+use Ages\ShippingGateway\PersonalCollection\Config\PersonalCollectionConfig;
+use Ages\ShippingGateway\PersonalCollection\Handler\PersonalCollectionShipmentHandler;
 use Ages\ShippingGateway\Ppl\Config\PplConfig;
 use Ages\ShippingGateway\Ppl\Handler\PplShipmentHandler;
 
@@ -23,12 +25,14 @@ class ShippingGateway
     private ?PplShipmentHandler $pplHandler = null;
     private ?CzechPostShipmentHandler $czechPostHandler = null;
     private ?GebruderWeissShipmentHandler $gwHandler = null;
+    private ?PersonalCollectionShipmentHandler $personalCollectionHandler = null;
 
     public function __construct(
-        private readonly ?GlsConfig           $glsConfig = null,
-        private readonly ?PplConfig           $pplConfig = null,
-        private readonly ?CzechPostConfig     $czechPostConfig = null,
-        private readonly ?GebruderWeissConfig $gwConfig = null,
+        private readonly ?GlsConfig                  $glsConfig = null,
+        private readonly ?PplConfig                  $pplConfig = null,
+        private readonly ?CzechPostConfig            $czechPostConfig = null,
+        private readonly ?GebruderWeissConfig        $gwConfig = null,
+        private readonly ?PersonalCollectionConfig   $personalCollectionConfig = null,
     )
     {
     }
@@ -40,10 +44,11 @@ class ShippingGateway
     {
         try {
             return match ($carrier) {
-                Carrier::Gls           => $this->glsShipmentHandler()->getParcelTracking($consignmentId),
-                Carrier::Ppl           => $this->pplShipmentHandler()->getParcelTracking($consignmentId),
-                Carrier::CzechPost     => $this->czechPostShipmentHandler()->getParcelTracking($consignmentId),
-                Carrier::GebruderWeiss => $this->gwShipmentHandler()->getParcelTracking($consignmentId, $createdAt),
+                Carrier::Gls                => $this->glsShipmentHandler()->getParcelTracking($consignmentId),
+                Carrier::Ppl                => $this->pplShipmentHandler()->getParcelTracking($consignmentId),
+                Carrier::CzechPost          => $this->czechPostShipmentHandler()->getParcelTracking($consignmentId),
+                Carrier::GebruderWeiss      => $this->gwShipmentHandler()->getParcelTracking($consignmentId, $createdAt),
+                Carrier::PersonalCollection => null,
             };
         } catch (ShippingException $e) {
             throw $e;
@@ -59,10 +64,11 @@ class ShippingGateway
     {
         try {
             return match ($carrier) {
-                Carrier::Gls           => $this->glsShipmentHandler()->getTrackingUrl($consignmentId),
-                Carrier::Ppl           => $this->pplShipmentHandler()->getTrackingUrl($consignmentId),
-                Carrier::CzechPost     => $this->czechPostShipmentHandler()->getTrackingUrl($consignmentId),
-                Carrier::GebruderWeiss => $this->gwShipmentHandler()->getTrackingUrl($consignmentId),
+                Carrier::Gls                => $this->glsShipmentHandler()->getTrackingUrl($consignmentId),
+                Carrier::Ppl                => $this->pplShipmentHandler()->getTrackingUrl($consignmentId),
+                Carrier::CzechPost          => $this->czechPostShipmentHandler()->getTrackingUrl($consignmentId),
+                Carrier::GebruderWeiss      => $this->gwShipmentHandler()->getTrackingUrl($consignmentId),
+                Carrier::PersonalCollection => '',
             };
         } catch (ShippingException $e) {
             throw $e;
@@ -79,10 +85,11 @@ class ShippingGateway
     {
         try {
             $handler = match ($carrier) {
-                Carrier::Gls           => $this->glsShipmentHandler(),
-                Carrier::Ppl           => $this->pplShipmentHandler(),
-                Carrier::CzechPost     => $this->czechPostShipmentHandler(),
-                Carrier::GebruderWeiss => $this->gwShipmentHandler(),
+                Carrier::Gls                => $this->glsShipmentHandler(),
+                Carrier::Ppl                => $this->pplShipmentHandler(),
+                Carrier::CzechPost          => $this->czechPostShipmentHandler(),
+                Carrier::GebruderWeiss      => $this->gwShipmentHandler(),
+                Carrier::PersonalCollection => $this->personalCollectionShipmentHandler(),
             };
             return $handler->createShipment($request);
         } catch (ShippingException $e) {
@@ -114,5 +121,11 @@ class ShippingGateway
     {
         if ($this->gwConfig === null) throw new ConfigException('GebruderWeissConfig not configured');
         return $this->gwHandler ??= new GebruderWeissShipmentHandler($this->gwConfig);
+    }
+
+    private function personalCollectionShipmentHandler(): PersonalCollectionShipmentHandler
+    {
+        if ($this->personalCollectionConfig === null) throw new ConfigException('PersonalCollectionConfig not configured');
+        return $this->personalCollectionHandler ??= new PersonalCollectionShipmentHandler($this->personalCollectionConfig);
     }
 }
