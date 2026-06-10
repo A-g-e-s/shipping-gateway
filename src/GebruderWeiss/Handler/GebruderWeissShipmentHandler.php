@@ -87,6 +87,7 @@ class GebruderWeissShipmentHandler extends GebruderWeissApi implements ShipmentH
             'transportAddress' => [
                 $this->buildShipperAddress(),
                 $this->buildConsigneeAddress($request),
+                $this->buildFreightPayerAddress(),
             ],
             'transportRequirements' => $this->buildTransportRequirements($request),
             'goodsItems' => array_map(
@@ -118,6 +119,22 @@ class GebruderWeissShipmentHandler extends GebruderWeissApi implements ShipmentH
                 'city' => $p->city,
                 'zipCode' => $p->zip,
                 'countryCode' => $p->country,
+            ],
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildFreightPayerAddress(): array
+    {
+        return [
+            'addressType' => 'FREIGHT_PAYER',
+            'addressReferences' => [
+                [
+                    'qualifier' => 'CUSTOMER_ID',
+                    'reference' => $this->config->customerId,
+                ],
             ],
         ];
     }
