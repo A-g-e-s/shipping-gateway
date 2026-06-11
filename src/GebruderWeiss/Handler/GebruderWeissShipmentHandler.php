@@ -133,7 +133,7 @@ class GebruderWeissShipmentHandler extends GebruderWeissApi implements ShipmentH
             'addressReferences' => [
                 [
                     'qualifier' => 'CUSTOMER_ID',
-                    'reference' => $this->config->customerId,
+                    'reference' => (string) $this->config->customerId,
                 ],
             ],
         ];
