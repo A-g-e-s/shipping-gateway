@@ -17,7 +17,7 @@ class PersonalCollectionShipmentHandler implements ShipmentHandlerInterface
 
     public function __construct(PersonalCollectionConfig $config)
     {
-        $this->labelGenerator = new PersonalCollectionLabelGenerator($config);
+        $this->labelGenerator = new PersonalCollectionLabelGenerator($config->pickupAddress, $config->logoPath);
     }
 
     public function getCarrier(): Carrier

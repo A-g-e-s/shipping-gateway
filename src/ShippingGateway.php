@@ -18,6 +18,8 @@ use Ages\ShippingGateway\PersonalCollection\Config\PersonalCollectionConfig;
 use Ages\ShippingGateway\PersonalCollection\Handler\PersonalCollectionShipmentHandler;
 use Ages\ShippingGateway\Ppl\Config\PplConfig;
 use Ages\ShippingGateway\Ppl\Handler\PplShipmentHandler;
+use Ages\ShippingGateway\SupplierDelivery\Config\SupplierDeliveryConfig;
+use Ages\ShippingGateway\SupplierDelivery\Handler\SupplierDeliveryShipmentHandler;
 
 class ShippingGateway
 {
@@ -26,6 +28,7 @@ class ShippingGateway
     private ?CzechPostShipmentHandler $czechPostHandler = null;
     private ?GebruderWeissShipmentHandler $gwHandler = null;
     private ?PersonalCollectionShipmentHandler $personalCollectionHandler = null;
+    private ?SupplierDeliveryShipmentHandler $supplierDeliveryHandler = null;
 
     public function __construct(
         private readonly ?GlsConfig                  $glsConfig = null,
@@ -33,6 +36,7 @@ class ShippingGateway
         private readonly ?CzechPostConfig            $czechPostConfig = null,
         private readonly ?GebruderWeissConfig        $gwConfig = null,
         private readonly ?PersonalCollectionConfig   $personalCollectionConfig = null,
+        private readonly ?SupplierDeliveryConfig     $supplierDeliveryConfig = null,
     )
     {
     }
@@ -49,6 +53,7 @@ class ShippingGateway
                 Carrier::CzechPost          => $this->czechPostShipmentHandler()->getParcelTracking($consignmentId),
                 Carrier::GebruderWeiss      => $this->gwShipmentHandler()->getParcelTracking($consignmentId, $createdAt),
                 Carrier::PersonalCollection => null,
+                Carrier::SupplierDelivery   => null,
             };
         } catch (ShippingException $e) {
             throw $e;
@@ -69,6 +74,7 @@ class ShippingGateway
                 Carrier::CzechPost          => $this->czechPostShipmentHandler()->getTrackingUrl($consignmentId),
                 Carrier::GebruderWeiss      => $this->gwShipmentHandler()->getTrackingUrl($consignmentId),
                 Carrier::PersonalCollection => '',
+                Carrier::SupplierDelivery   => '',
             };
         } catch (ShippingException $e) {
             throw $e;
@@ -90,6 +96,7 @@ class ShippingGateway
                 Carrier::CzechPost          => $this->czechPostShipmentHandler(),
                 Carrier::GebruderWeiss      => $this->gwShipmentHandler(),
                 Carrier::PersonalCollection => $this->personalCollectionShipmentHandler(),
+                Carrier::SupplierDelivery   => $this->supplierDeliveryShipmentHandler(),
             };
             return $handler->createShipment($request);
         } catch (ShippingException $e) {
@@ -127,5 +134,11 @@ class ShippingGateway
     {
         if ($this->personalCollectionConfig === null) throw new ConfigException('PersonalCollectionConfig not configured');
         return $this->personalCollectionHandler ??= new PersonalCollectionShipmentHandler($this->personalCollectionConfig);
+    }
+
+    private function supplierDeliveryShipmentHandler(): SupplierDeliveryShipmentHandler
+    {
+        if ($this->supplierDeliveryConfig === null) throw new ConfigException('SupplierDeliveryConfig not configured');
+        return $this->supplierDeliveryHandler ??= new SupplierDeliveryShipmentHandler($this->supplierDeliveryConfig);
     }
 }

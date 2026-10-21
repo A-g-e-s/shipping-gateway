@@ -4,14 +4,23 @@ declare(strict_types=1);
 
 namespace Ages\ShippingGateway\PersonalCollection\Label;
 
+use Ages\ShippingGateway\Common\PickupAddress;
 use Ages\ShippingGateway\Common\Shipment\Parcel;
 use Ages\ShippingGateway\Common\Shipment\ShipmentRequest;
-use Ages\ShippingGateway\PersonalCollection\Config\PersonalCollectionConfig;
 use Mpdf\Mpdf;
 
+/**
+ * Vlastní štítek bez externího dopravce – osobní odběr i doručení dodavatelem (vlastní auto).
+ * Liší se jen nadpisem a popiskem adresy (výdejní místo / odesílatel).
+ */
 class PersonalCollectionLabelGenerator
 {
-    public function __construct(private readonly PersonalCollectionConfig $config) {}
+    public function __construct(
+        private readonly PickupAddress $address,
+        private readonly ?string       $logoPath = null,
+        private readonly string        $title = 'OSOBNÍ ODBĚR',
+        private readonly string        $addressLabel = 'VÝDEJNÍ MÍSTO:',
+    ) {}
 
     /**
      * Generates all parcel labels as a single multi-page PDF.
@@ -49,7 +58,7 @@ class PersonalCollectionLabelGenerator
         int             $totalParcels,
     ): string {
         $r      = $request->recipient;
-        $pickup = $this->config->pickupAddress;
+        $pickup = $this->address;
 
         $recipientName    = $r->company ?? $r->fullName();
         $recipientName2   = $r->company !== null ? $r->fullName() : null;
@@ -64,8 +73,8 @@ class PersonalCollectionLabelGenerator
         $weight = number_format($parcel->weight, 2, ',', '.') . ' KG';
 
         $logoHtml = '';
-        if ($this->config->logoPath !== null && file_exists($this->config->logoPath)) {
-            $path     = $this->esc($this->config->logoPath);
+        if ($this->logoPath !== null && file_exists($this->logoPath)) {
+            $path     = $this->esc($this->logoPath);
             $logoHtml = "<img src=\"{$path}\" style=\"display:block; margin:0 auto; max-width:26mm; max-height:19mm;\" />";
         }
 
@@ -81,7 +90,9 @@ class PersonalCollectionLabelGenerator
         $serviceRowHeight   = $serviceRowHeightMm . 'mm';
         $barcodeRowHeight   = $barcodeRowHeightMm . 'mm';
 
-        $reference = $this->esc($request->reference);
+        $reference    = $this->esc($request->reference);
+        $title        = $this->esc($this->title);
+        $addressLabel = $this->esc($this->addressLabel);
 
         // Row heights: 22+38+17+11+11+serviceRow+barcodeRow = 144mm
         return <<<HTML
@@ -110,7 +121,7 @@ table { width: 100%; border-collapse: collapse; }
             {$logoHtml}
           </td>
           <td style="font-size:9pt; font-weight:bold; vertical-align:middle; padding:2mm 2mm 0 2mm; text-align:center;">
-            OSOBNÍ ODBĚR
+            {$title}
           </td>
         </tr>
       </table>
@@ -128,10 +139,10 @@ table { width: 100%; border-collapse: collapse; }
     </td>
   </tr>
 
-  <!-- Row 3: VÝDEJNÍ MÍSTO — 17mm -->
+  <!-- Row 3: VÝDEJNÍ MÍSTO / ODESÍLATEL — 17mm -->
   <tr style="height:17mm;">
     <td style="border-bottom:0.5pt solid #000; padding:1mm 1.5mm; vertical-align:top; overflow:hidden;">
-      <div class="lbl">VÝDEJNÍ MÍSTO:</div>
+      <div class="lbl">{$addressLabel}</div>
       <div style="font-size:7.5pt; font-weight:bold;">{$this->esc($pickupName)}</div>
       <div style="font-size:7pt;">{$this->esc($pickupStreet)}</div>
       <div style="font-size:7pt;">{$this->esc($pickupZipCity)}</div>
