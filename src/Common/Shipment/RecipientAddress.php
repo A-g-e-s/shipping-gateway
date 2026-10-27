@@ -6,12 +6,17 @@ namespace Ages\ShippingGateway\Common\Shipment;
 
 readonly class RecipientAddress
 {
+    /** Země, kde má PSČ pevný tvar 5 číslic – dopravci ho chtějí bez mezer. */
+    private const array NumericZipCountries = ['CZ', 'SK'];
+
+    public string $zip;
+
     public function __construct(
         public string $firstName,
         public string $lastName,
         public string $street,
         public string $city,
-        public string $zip,
+        string $zip,
         public string $country,
         public string $phone,
         public string $email,
@@ -19,6 +24,7 @@ readonly class RecipientAddress
         public ?string $houseNumber = null,
         public RecipientType $type = RecipientType::Person,
     ) {
+        $this->zip = self::normalizeZip($zip, $country);
     }
 
     public static function fromFullName(
@@ -51,6 +57,20 @@ readonly class RecipientAddress
             houseNumber: $houseNumber,
             type: $type,
         );
+    }
+
+    /**
+     * Ořízne a sloučí bílé znaky (zákazník napíše „621  00“), u CZ/SK odstraní mezery úplně.
+     */
+    public static function normalizeZip(string $zip, string $country): string
+    {
+        $zip = trim((string) preg_replace('/\s+/u', ' ', $zip));
+
+        if (in_array(strtoupper(trim($country)), self::NumericZipCountries, true)) {
+            $zip = str_replace(' ', '', $zip);
+        }
+
+        return $zip;
     }
 
     public function fullName(): string
