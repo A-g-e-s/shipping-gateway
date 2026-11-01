@@ -126,6 +126,19 @@ class ShippingGateway
         }
     }
 
+    /**
+     * API klíč mapového widgetu výdejních míst. Null pro dopravce, jejichž widget klíč nepotřebuje.
+     *
+     * @throws ConfigException
+     */
+    public function pickupPointWidgetKey(Carrier $carrier): ?string
+    {
+        return match ($carrier) {
+            Carrier::Ppl => $this->pplConfig->widgetApiKey ?? throw new ConfigException('PplConfig widgetApiKey not configured'),
+            default      => null,
+        };
+    }
+
     private function glsShipmentHandler(): GlsShipmentHandler
     {
         if ($this->glsConfig === null) throw new ConfigException('GlsConfig not configured');

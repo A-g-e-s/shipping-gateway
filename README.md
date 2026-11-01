@@ -80,6 +80,7 @@ services:
         clientSecret: CLIENT_SECRET
         pickupAddress: @pickupAddress
         # url: https://api-dev.dhl.com/ecs/ppl/myapi2/             # test endpoint
+        # widgetApiKey: ak_xxxxxxxx                                # mapový widget výdejních míst (klient.ppl.cz/widgetadmin)
     )
 
     czechPostConfig: Ages\ShippingGateway\CzechPost\Config\CzechPostConfig(
@@ -312,6 +313,18 @@ if ($tracking !== null) {
 
 > **Gebrüder Weiss:** tracking probíhá přes reference/orderId vrácené v `$label->trackingNumber`.  
 > API vrací aktuální stav zásilky; `null` znamená, že zásilka ještě není v systému GBW (zpoždění po odeslání objednávky).
+
+---
+
+### Widget výdejních míst
+
+```php
+$apiKey = $gateway->pickupPointWidgetKey(Carrier::Ppl); // 'ak_…' pro <ppl-access-point-widget api-key="…">
+$gateway->pickupPointWidgetKey(Carrier::Gls);           // null — widget klíč nepotřebuje
+```
+
+> PPL widget 2.0 (https://ppl-widget2.apidog.io/) vyžaduje API klíč z https://klient.ppl.cz/widgetadmin s whitelistem domén.  
+> Klíč je veřejný (vypisuje se do HTML), nastavuje se jako `widgetApiKey` v `PplConfig`. Chybí-li, metoda vyhodí `ConfigException`.
 
 ---
 

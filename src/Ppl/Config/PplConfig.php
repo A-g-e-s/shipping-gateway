@@ -13,6 +13,7 @@ readonly class PplConfig
         public string        $url = 'https://api.dhl.com/ecs/ppl/myapi2/',
         public string        $grantType = 'client_credentials',
         public string        $scope = 'myapi2',
+        public ?string       $widgetApiKey = null,
     ) {
     }
 }
