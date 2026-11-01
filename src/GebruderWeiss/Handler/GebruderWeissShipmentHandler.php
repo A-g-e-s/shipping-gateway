@@ -6,9 +6,12 @@ namespace Ages\ShippingGateway\GebruderWeiss\Handler;
 
 use Ages\ShippingGateway\Common\Carrier;
 use Ages\ShippingGateway\Common\ShipmentHandlerInterface;
+use Ages\ShippingGateway\Common\ShippingException;
 use Ages\ShippingGateway\Common\Shipment\CashOnDelivery;
+use Ages\ShippingGateway\Common\Shipment\ImportRequest;
 use Ages\ShippingGateway\Common\Shipment\Parcel;
 use Ages\ShippingGateway\Common\Shipment\ParcelType;
+use Ages\ShippingGateway\Common\Shipment\RecipientAddress;
 use Ages\ShippingGateway\Common\Shipment\ShipmentLabel;
 use Ages\ShippingGateway\Common\Shipment\ShipmentRequest;
 use Ages\ShippingGateway\GebruderWeiss\Config\GebruderWeissConfig;
@@ -41,6 +44,23 @@ class GebruderWeissShipmentHandler extends GebruderWeissApi implements ShipmentH
             $labels[] = new ShipmentLabel(Carrier::GebruderWeiss, $request->reference, $index === 0 ? $combinedPdf : '');
         }
         return $labels;
+    }
+
+    /**
+     * Objedná svoz od dodavatele na naši adresu. Štítky lepí dopravce při vyzvednutí, SSCC se proto neposílá.
+     *
+     * @throws ShippingException
+     */
+    public function createImport(ImportRequest $request): void
+    {
+        if ($request->parcels === []) {
+            throw new ShippingException('GBW import: no parcels');
+        }
+        if ($request->collectionDate < new \DateTimeImmutable('today')) {
+            throw new ShippingException('GBW import: collection date cannot be in the past');
+        }
+
+        $this->createTransportOrder($this->buildImportPayload($request));
     }
 
     /**
@@ -85,8 +105,8 @@ class GebruderWeissShipmentHandler extends GebruderWeissApi implements ShipmentH
             'customerReference' => $request->reference,
             'branchCode' => $this->config->branchCode,
             'transportAddress' => [
-                $this->buildShipperAddress(),
-                $this->buildConsigneeAddress($request),
+                $this->buildPickupAddress('SHIPPER'),
+                $this->buildRecipientAddress('CONSIGNEE', $request->recipient),
                 $this->buildFreightPayerAddress(),
             ],
             'transportRequirements' => $this->buildTransportRequirements($request),
@@ -105,14 +125,55 @@ class GebruderWeissShipmentHandler extends GebruderWeissApi implements ShipmentH
     }
 
     /**
+     * Odesílatel je dodavatel, příjemce naše pickupAddress, dopravu platíme my.
+     *
      * @return array<string, mixed>
      */
-    private function buildShipperAddress(): array
+    private function buildImportPayload(ImportRequest $request): array
+    {
+        $requirements = [
+            'incoterm' => array_filter([
+                'code' => $this->config->importIncoterm,
+                'location' => mb_substr($request->shipper->city, 0, 35) ?: null,
+            ], fn($v) => $v !== null),
+            'transportProduct' => ['product' => $this->config->product],
+            'collectionDate' => $request->collectionDate->format('Y-m-d'),
+        ];
+
+        if ($request->note !== null) {
+            $requirements['note'] = $this->buildNote($request->note);
+        }
+
+        return [
+            'transportOrder' => [
+                'customerId' => $this->config->customerId,
+                'customerReference' => $request->reference,
+                'branchCode' => $this->config->branchCode,
+                'transportAddress' => [
+                    $this->buildRecipientAddress('SHIPPER', $request->shipper),
+                    $this->buildPickupAddress('CONSIGNEE'),
+                    $this->buildFreightPayerAddress(),
+                ],
+                'transportRequirements' => $requirements,
+                'goodsItems' => array_map(
+                    fn(Parcel $parcel) => $this->buildGoodsItem($parcel, null),
+                    array_values($request->parcels),
+                ),
+            ],
+        ];
+    }
+
+    /**
+     * Naše adresa z konfigurace – odesílatel u exportu, příjemce u importu.
+     *
+     * @return array<string, mixed>
+     */
+    private function buildPickupAddress(string $addressType): array
     {
         $p = $this->config->pickupAddress;
 
-        return [
-            'addressType' => 'SHIPPER',
+        $data = [
+            'addressType' => $addressType,
             'address' => [
                 'name1' => $p->name,
                 'street1' => $p->getStreetWithNumber(),
@@ -121,6 +182,19 @@ class GebruderWeissShipmentHandler extends GebruderWeissApi implements ShipmentH
                 'countryCode' => $p->country,
             ],
         ];
+
+        if ($addressType === 'CONSIGNEE') {
+            $contact = array_filter([
+                'email' => $p->email ?: null,
+                'phone' => $p->phone ?: null,
+            ], fn($v) => $v !== null);
+
+            if ($contact !== []) {
+                $data['contacts'] = [$contact];
+            }
+        }
+
+        return $data;
     }
 
     /**
@@ -140,12 +214,12 @@ class GebruderWeissShipmentHandler extends GebruderWeissApi implements ShipmentH
     }
 
     /**
+     * Zadaná adresa – příjemce u exportu, dodavatel (odesílatel) u importu.
+     *
      * @return array<string, mixed>
      */
-    private function buildConsigneeAddress(ShipmentRequest $request): array
+    private function buildRecipientAddress(string $addressType, RecipientAddress $r): array
     {
-        $r = $request->recipient;
-
         $address = array_filter([
             'name1' => $r->company ?? $r->fullName(),
             'name2' => $r->company !== null ? $r->fullName() : null,
@@ -163,7 +237,7 @@ class GebruderWeissShipmentHandler extends GebruderWeissApi implements ShipmentH
         ], fn($v) => $v !== null);
 
         $data = [
-            'addressType' => 'CONSIGNEE',
+            'addressType' => $addressType,
             'address' => $address,
         ];
 
@@ -185,10 +259,7 @@ class GebruderWeissShipmentHandler extends GebruderWeissApi implements ShipmentH
         ];
 
         if ($request->note !== null) {
-            $requirements['note'] = [
-                'noteType' => 'GENERAL',
-                'noteText' => ['text' => mb_substr($request->note, 0, 100)],
-            ];
+            $requirements['note'] = $this->buildNote($request->note);
         }
 
         if ($request->cod !== null) {
@@ -205,13 +276,20 @@ class GebruderWeissShipmentHandler extends GebruderWeissApi implements ShipmentH
     /**
      * @return array<string, mixed>
      */
-    private function buildGoodsItem(Parcel $parcel, string $sscc): array
+    private function buildNote(string $note): array
+    {
+        return [
+            'noteType' => 'GENERAL',
+            'noteText' => ['text' => mb_substr($note, 0, 100)],
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildGoodsItem(Parcel $parcel, ?string $sscc): array
     {
         $packItem = [
-            'barcode' => [
-                'barcodeType' => 'SSCC',
-                'barcode' => '00' . $sscc,
-            ],
             'measurements' => [
                 [
                     'measureQualifier' => 'GROSS_WEIGHT',
@@ -220,6 +298,15 @@ class GebruderWeissShipmentHandler extends GebruderWeissApi implements ShipmentH
                 ],
             ],
         ];
+
+        if ($sscc !== null) {
+            $packItem = [
+                'barcode' => [
+                    'barcodeType' => 'SSCC',
+                    'barcode' => '00' . $sscc,
+                ],
+            ] + $packItem;
+        }
 
         if ($parcel->dimensions !== null) {
             $d = $parcel->dimensions;

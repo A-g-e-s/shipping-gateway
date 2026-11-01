@@ -102,6 +102,7 @@ services:
         ssccPrefix: '22260000'          # číselný prefix pro generování SSCC kódů
         # product: GW_PRO_LINE
         # incoterm: DAP
+        # importIncoterm: EXW              # dodací podmínka pro import (svoz od dodavatele)
         # goodsDescription: Goods
         # logoPath: %wwwDir%/img/logo-gw.png   # čtvercové logo na etiketu (volitelné)
     )
@@ -238,6 +239,38 @@ $tracking = $gateway->tracking($label->carrier, $label->trackingNumber);
 >
 > **Více balíků — Gebrüder Weiss:** každý balík dostane vlastní SSCC kód v etiketě a samostatné PDF etiket.  
 > `ShipmentLabel[]` má tolik prvků, kolik je zásilek — pro tracking mají všechny stejný `trackingNumber` (`reference` / `orderId`), `labelPdf` je u prvního prvku a SSCC zůstává součástí etikety.
+
+---
+
+### Import — svoz od dodavatele (jen Gebrüder Weiss)
+
+Dopravce zboží vyzvedne u dodavatele (`shipper`) a doveze ho na `pickupAddress` z konfigurace; dopravu platí náš `customerId`.
+Štítky lepí dopravce při vyzvednutí, metoda proto nic nevrací — zásilku pak sledujete přes `reference`.
+
+```php
+use Ages\ShippingGateway\Common\Shipment\ImportRequest;
+
+$gateway->createImport(Carrier::GebruderWeiss, new ImportRequest(
+    reference: 'IMP-2026-001',
+    shipper: new RecipientAddress(
+        firstName: 'Max',
+        lastName: 'Mustermann',
+        street: 'Industriestraße',
+        houseNumber: '10',
+        city: 'Wien',
+        zip: '1010',
+        country: 'AT',
+        phone: '+43 1 234',
+        email: 'expedice@dodavatel.at',
+        company: 'Dodavatel GmbH',
+    ),
+    parcels: [new Parcel(weight: 320.0, type: ParcelType::PalletEur, dimensions: new Dimensions(120, 80, 150))],
+    collectionDate: new \DateTimeImmutable('2026-11-05'), // nesmí být v minulosti
+    note: 'Vyzvednout na rampě 3',
+));
+```
+
+> Posílá se `collectionDate`, incoterm `importIncoterm` (výchozí `EXW`, místo = město dodavatele) a balíky bez SSCC (váha, příp. rozměry).
 
 ---
 

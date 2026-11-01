@@ -4,6 +4,7 @@ namespace Ages\ShippingGateway;
 
 use Ages\ShippingGateway\Common\Carrier;
 use Ages\ShippingGateway\Common\ParcelTrackingInterface;
+use Ages\ShippingGateway\Common\Shipment\ImportRequest;
 use Ages\ShippingGateway\Common\Shipment\ShipmentLabel;
 use Ages\ShippingGateway\Common\Shipment\ShipmentRequest;
 use Ages\ShippingGateway\Common\ConfigException;
@@ -99,6 +100,25 @@ class ShippingGateway
                 Carrier::SupplierDelivery   => $this->supplierDeliveryShipmentHandler(),
             };
             return $handler->createShipment($request);
+        } catch (ShippingException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            throw new ShippingException($e->getMessage(), 0, $e);
+        }
+    }
+
+    /**
+     * Objedná svoz od dodavatele na pickupAddress dopravce. Podporuje jen Gebrüder Weiss.
+     *
+     * @throws ShippingException
+     */
+    public function createImport(Carrier $carrier, ImportRequest $request): void
+    {
+        try {
+            match ($carrier) {
+                Carrier::GebruderWeiss => $this->gwShipmentHandler()->createImport($request),
+                default                => throw new ShippingException('Import is not supported for carrier ' . $carrier->name),
+            };
         } catch (ShippingException $e) {
             throw $e;
         } catch (\Throwable $e) {

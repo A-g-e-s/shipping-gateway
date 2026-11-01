@@ -17,6 +17,7 @@ readonly class GebruderWeissConfig
         public string $ssccPrefix,
         public string $product = 'GW_PRO_LINE',
         public string $incoterm = 'DAP',
+        public string $importIncoterm = 'EXW',
         public string $goodsDescription = 'Goods',
         public ?string $logoPath = null,
         public string $apiUrl = 'https://my.api.gw-world.com/transport/transport-order/2.0.0',
