@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Ages\ShippingGateway\GebruderWeiss\Handler;
 
 use Ages\ShippingGateway\Common\Carrier;
+use Ages\ShippingGateway\Common\ShipmentAlreadyExistsException;
 use Ages\ShippingGateway\Common\ShipmentHandlerInterface;
 use Ages\ShippingGateway\Common\ShippingException;
 use Ages\ShippingGateway\Common\Shipment\CashOnDelivery;
@@ -33,16 +34,30 @@ class GebruderWeissShipmentHandler extends GebruderWeissApi implements ShipmentH
         return Carrier::GebruderWeiss;
     }
 
+    /**
+     * Štítky se vyrobí před objednáním přepravy: když se generování nepovede, k dopravci nic neodejde.
+     * Všechny štítky jsou v jednom PDF u prvního balíku, ostatní mají prázdný obsah.
+     *
+     * @throws ShipmentAlreadyExistsException objednávka se stejnou referencí už existuje; nese štítky
+     *         se stejnými SSCC (odvozené z reference a pořadí balíku), platné, jen když jsou balíky stejné
+     *         jako při prvním odeslání
+     */
     public function createShipment(ShipmentRequest $request): array
     {
         $ssccCodes = $this->generateSsccCodes($request);
-        $this->createTransportOrder($this->buildPayload($request, $ssccCodes));
         $combinedPdf = $this->labelGenerator->generateLabels($request, $ssccCodes);
 
         $labels = [];
         foreach (array_keys($ssccCodes) as $index) {
             $labels[] = new ShipmentLabel(Carrier::GebruderWeiss, $request->reference, $index === 0 ? $combinedPdf : '');
         }
+
+        try {
+            $this->createTransportOrder($this->buildPayload($request, $ssccCodes));
+        } catch (ShipmentAlreadyExistsException $e) {
+            throw new ShipmentAlreadyExistsException($e->getMessage(), $labels, $e);
+        }
+
         return $labels;
     }
 

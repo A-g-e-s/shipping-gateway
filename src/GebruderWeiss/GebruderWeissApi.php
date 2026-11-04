@@ -6,6 +6,7 @@ namespace Ages\ShippingGateway\GebruderWeiss;
 
 use Ages\ShippingGateway\Common\CarrierInterface;
 use Ages\ShippingGateway\Common\ParcelTrackingInterface;
+use Ages\ShippingGateway\Common\ShipmentAlreadyExistsException;
 use Ages\ShippingGateway\Common\ShippingException;
 use Ages\ShippingGateway\GebruderWeiss\Config\GebruderWeissConfig;
 use Ages\ShippingGateway\GebruderWeiss\Tracking\GbwParcelStatus;
@@ -86,7 +87,7 @@ class GebruderWeissApi implements CarrierInterface
                 throw new ShippingException('GBW: Unauthorized');
             }
             if ($status === 409) {
-                throw new ShippingException('GBW: Conflict – order already exists');
+                throw new ShipmentAlreadyExistsException('GBW: Conflict – order already exists');
             }
 
             $body = (string)$response->getBody();
