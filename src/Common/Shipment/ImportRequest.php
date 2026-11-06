@@ -6,7 +6,7 @@ namespace Ages\ShippingGateway\Common\Shipment;
 
 /**
  * Svoz od dodavatele k nám: dopravce zboží vyzvedne u $shipper a doveze na pickupAddress z konfigurace dopravce.
- * Štítky řeší dopravce, proto se negenerují.
+ * Generují se štítky se SSCC (dopravce bez nich zakázku nepřijme) – dodavatel je nalepí na zboží.
  */
 readonly class ImportRequest
 {

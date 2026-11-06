@@ -8,6 +8,7 @@ use Ages\ShippingGateway\Common\Shipment\ImportRequest;
 use Ages\ShippingGateway\Common\Shipment\ShipmentLabel;
 use Ages\ShippingGateway\Common\Shipment\ShipmentRequest;
 use Ages\ShippingGateway\Common\ConfigException;
+use Ages\ShippingGateway\Common\ShipmentAlreadyExistsException;
 use Ages\ShippingGateway\Common\ShippingException;
 use Ages\ShippingGateway\CzechPost\Config\CzechPostConfig;
 use Ages\ShippingGateway\CzechPost\Handler\CzechPostShipmentHandler;
@@ -109,13 +110,16 @@ class ShippingGateway
 
     /**
      * Objedná svoz od dodavatele na pickupAddress dopravce. Podporuje jen Gebrüder Weiss.
+     * Vrací štítky (PDF u prvního balíku), které dodavatel nalepí na zboží před vyzvednutím.
      *
+     * @return ShipmentLabel[]
+     * @throws ShipmentAlreadyExistsException objednávka se stejnou referencí už u dopravce existuje (nese štítky)
      * @throws ShippingException
      */
-    public function createImport(Carrier $carrier, ImportRequest $request): void
+    public function createImport(Carrier $carrier, ImportRequest $request): array
     {
         try {
-            match ($carrier) {
+            return match ($carrier) {
                 Carrier::GebruderWeiss => $this->gwShipmentHandler()->createImport($request),
                 default                => throw new ShippingException('Import is not supported for carrier ' . $carrier->name),
             };

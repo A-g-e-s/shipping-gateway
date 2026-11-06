@@ -44,13 +44,8 @@ class GebruderWeissShipmentHandler extends GebruderWeissApi implements ShipmentH
      */
     public function createShipment(ShipmentRequest $request): array
     {
-        $ssccCodes = $this->generateSsccCodes($request);
-        $combinedPdf = $this->labelGenerator->generateLabels($request, $ssccCodes);
-
-        $labels = [];
-        foreach (array_keys($ssccCodes) as $index) {
-            $labels[] = new ShipmentLabel(Carrier::GebruderWeiss, $request->reference, $index === 0 ? $combinedPdf : '');
-        }
+        $ssccCodes = $this->generateSsccCodes($request->reference, $request->parcels);
+        $labels = $this->buildLabels($request->reference, $ssccCodes, $this->labelGenerator->generateLabels($request, $ssccCodes));
 
         try {
             $this->createTransportOrder($this->buildPayload($request, $ssccCodes));
@@ -62,11 +57,15 @@ class GebruderWeissShipmentHandler extends GebruderWeissApi implements ShipmentH
     }
 
     /**
-     * Objedná svoz od dodavatele na naši adresu. Štítky lepí dopravce při vyzvednutí, SSCC se proto neposílá.
+     * Objedná svoz od dodavatele na naši adresu. GBW vyžaduje u každého kusu čárový kód, import proto
+     * dostane SSCC a štítky stejně jako export – PDF se pošle dodavateli, který je nalepí na zboží.
+     * Štítky se vyrobí před objednáním přepravy, PDF je u prvního balíku.
      *
+     * @return ShipmentLabel[]
+     * @throws ShipmentAlreadyExistsException objednávka se stejnou referencí už existuje; nese štítky jako u exportu
      * @throws ShippingException
      */
-    public function createImport(ImportRequest $request): void
+    public function createImport(ImportRequest $request): array
     {
         if ($request->parcels === []) {
             throw new ShippingException('GBW import: no parcels');
@@ -75,17 +74,40 @@ class GebruderWeissShipmentHandler extends GebruderWeissApi implements ShipmentH
             throw new ShippingException('GBW import: collection date cannot be in the past');
         }
 
-        $this->createTransportOrder($this->buildImportPayload($request));
+        $ssccCodes = $this->generateSsccCodes($request->reference, $request->parcels);
+        $labels = $this->buildLabels($request->reference, $ssccCodes, $this->labelGenerator->generateImportLabels($request, $ssccCodes));
+
+        try {
+            $this->createTransportOrder($this->buildImportPayload($request, $ssccCodes));
+        } catch (ShipmentAlreadyExistsException $e) {
+            throw new ShipmentAlreadyExistsException($e->getMessage(), $labels, $e);
+        }
+
+        return $labels;
     }
 
     /**
+     * @param string[] $ssccCodes
+     * @return ShipmentLabel[]
+     */
+    private function buildLabels(string $reference, array $ssccCodes, string $combinedPdf): array
+    {
+        $labels = [];
+        foreach (array_keys($ssccCodes) as $index) {
+            $labels[] = new ShipmentLabel(Carrier::GebruderWeiss, $reference, $index === 0 ? $combinedPdf : '');
+        }
+        return $labels;
+    }
+
+    /**
+     * @param Parcel[] $parcels
      * @return string[]
      */
-    private function generateSsccCodes(ShipmentRequest $request): array
+    private function generateSsccCodes(string $reference, array $parcels): array
     {
         $codes = [];
-        foreach (array_keys($request->parcels) as $index) {
-            $codes[$index] = $this->generateSscc($request->reference, $index);
+        foreach (array_keys($parcels) as $index) {
+            $codes[$index] = $this->generateSscc($reference, $index);
         }
         return $codes;
     }
@@ -142,9 +164,10 @@ class GebruderWeissShipmentHandler extends GebruderWeissApi implements ShipmentH
     /**
      * Odesílatel je dodavatel, příjemce naše pickupAddress, dopravu platíme my.
      *
+     * @param string[] $ssccCodes
      * @return array<string, mixed>
      */
-    private function buildImportPayload(ImportRequest $request): array
+    private function buildImportPayload(ImportRequest $request, array $ssccCodes): array
     {
         $requirements = [
             'incoterm' => array_filter([
@@ -172,8 +195,9 @@ class GebruderWeissShipmentHandler extends GebruderWeissApi implements ShipmentH
                 ],
                 'transportRequirements' => $requirements,
                 'goodsItems' => array_map(
-                    fn(Parcel $parcel) => $this->buildGoodsItem($parcel, null),
-                    array_values($request->parcels),
+                    fn(Parcel $parcel, int $index) => $this->buildGoodsItem($parcel, $ssccCodes[$index]),
+                    $request->parcels,
+                    array_keys($request->parcels),
                 ),
             ],
         ];
@@ -321,53 +345,50 @@ class GebruderWeissShipmentHandler extends GebruderWeissApi implements ShipmentH
     }
 
     /**
-     * Bez SSCC (import – štítky lepí dopravce) se packItems vynechá: GBW v packItem vyžaduje barcode
-     * (jinak 400 „missing mandatory parameter: [packItem.barcode]“), takže zůstane jen počet, typ a váha.
+     * GBW vyžaduje packItem s čárovým kódem u každého kusu (i u importu), proto SSCC vždy.
      *
      * @return array<string, mixed>
      */
-    private function buildGoodsItem(Parcel $parcel, ?string $sscc): array
+    private function buildGoodsItem(Parcel $parcel, string $sscc): array
     {
-        $weight = [
-            [
-                'measureQualifier' => 'GROSS_WEIGHT',
-                'measureUnit' => 'KGM',
-                'measure' => (int) round($parcel->weight),
+        $packItem = [
+            'barcode' => [
+                'barcodeType' => 'SSCC',
+                'barcode' => '00' . $sscc,
+            ],
+            'measurements' => [
+                [
+                    'measureQualifier' => 'GROSS_WEIGHT',
+                    'measureUnit' => 'KGM',
+                    'measure' => (int) round($parcel->weight),
+                ],
             ],
         ];
 
-        $goodsItem = [
+        if ($parcel->dimensions !== null) {
+            $d = $parcel->dimensions;
+            $packItem['dimension'] = [
+                'length' => round($d->length / 100, 4),
+                'width' => round($d->width / 100, 4),
+                'height' => round($d->height / 100, 4),
+                'dimensionUnit' => 'MTR',
+            ];
+        }
+
+        return [
             'quantity' => 1,
             'packageType' => $this->getPackageTypeCode($parcel->type),
             'description' => $this->config->goodsDescription,
             'stackable' => false,
-        ];
-
-        if ($sscc !== null) {
-            $packItem = [
-                'barcode' => [
-                    'barcodeType' => 'SSCC',
-                    'barcode' => '00' . $sscc,
+            'packItems' => [$packItem],
+            'measurements' => [
+                [
+                    'measureQualifier' => 'GROSS_WEIGHT',
+                    'measureUnit' => 'KGM',
+                    'measure' => (int) round($parcel->weight),
                 ],
-                'measurements' => $weight,
-            ];
-
-            if ($parcel->dimensions !== null) {
-                $d = $parcel->dimensions;
-                $packItem['dimension'] = [
-                    'length' => round($d->length / 100, 4),
-                    'width' => round($d->width / 100, 4),
-                    'height' => round($d->height / 100, 4),
-                    'dimensionUnit' => 'MTR',
-                ];
-            }
-
-            $goodsItem['packItems'] = [$packItem];
-        }
-
-        $goodsItem['measurements'] = $weight;
-
-        return $goodsItem;
+            ],
+        ];
     }
 
     /**

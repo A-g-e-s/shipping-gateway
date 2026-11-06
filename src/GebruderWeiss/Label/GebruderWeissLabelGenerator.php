@@ -5,11 +5,16 @@ declare(strict_types=1);
 namespace Ages\ShippingGateway\GebruderWeiss\Label;
 
 use Ages\ShippingGateway\Common\Shipment\CashOnDelivery;
+use Ages\ShippingGateway\Common\Shipment\ImportRequest;
 use Ages\ShippingGateway\Common\Shipment\Parcel;
+use Ages\ShippingGateway\Common\Shipment\RecipientAddress;
 use Ages\ShippingGateway\Common\Shipment\ShipmentRequest;
 use Ages\ShippingGateway\GebruderWeiss\Config\GebruderWeissConfig;
 use Mpdf\Mpdf;
 
+/**
+ * @phpstan-type LabelParty array{name: string, name2: string|null, street: string, zip: string, city: string, country: string}
+ */
 class GebruderWeissLabelGenerator
 {
     public function __construct(private readonly GebruderWeissConfig $config) {}
@@ -22,6 +27,86 @@ class GebruderWeissLabelGenerator
      */
     public function generateLabels(ShipmentRequest $request, array $ssccCodes): string
     {
+        return $this->render(
+            recipient: $this->addressParty($request->recipient),
+            sender: $this->pickupParty(),
+            reference: $request->reference,
+            parcels: $request->parcels,
+            ssccCodes: $ssccCodes,
+            date: new \DateTimeImmutable(),
+            cod: $request->cod,
+            note: $request->note,
+        );
+    }
+
+    /**
+     * Štítky pro svoz od dodavatele – dodavatel je nalepí na zboží před vyzvednutím.
+     * Odesílatel = dodavatel, příjemce = naše pickupAddress, datum = den vyzvednutí.
+     *
+     * @param string[] $ssccCodes Indexed by parcel index (0-based)
+     */
+    public function generateImportLabels(ImportRequest $request, array $ssccCodes): string
+    {
+        return $this->render(
+            recipient: $this->pickupParty(),
+            sender: $this->addressParty($request->shipper),
+            reference: $request->reference,
+            parcels: $request->parcels,
+            ssccCodes: $ssccCodes,
+            date: $request->collectionDate,
+            cod: null,
+            note: $request->note,
+        );
+    }
+
+    /**
+     * @return LabelParty
+     */
+    private function addressParty(RecipientAddress $address): array
+    {
+        return [
+            'name' => $address->company ?? $address->fullName(),
+            'name2' => $address->company !== null ? $address->fullName() : null,
+            'street' => $address->streetWithNumber(),
+            'zip' => $address->zip,
+            'city' => $address->city,
+            'country' => $address->country,
+        ];
+    }
+
+    /**
+     * @return LabelParty
+     */
+    private function pickupParty(): array
+    {
+        $pickup = $this->config->pickupAddress;
+
+        return [
+            'name' => $pickup->name,
+            'name2' => null,
+            'street' => $pickup->getStreetWithNumber(),
+            'zip' => $pickup->zip,
+            'city' => $pickup->city,
+            'country' => $pickup->country,
+        ];
+    }
+
+    /**
+     * @param LabelParty $recipient
+     * @param LabelParty $sender
+     * @param Parcel[] $parcels
+     * @param string[] $ssccCodes Indexed by parcel index (0-based)
+     */
+    private function render(
+        array $recipient,
+        array $sender,
+        string $reference,
+        array $parcels,
+        array $ssccCodes,
+        \DateTimeInterface $date,
+        ?CashOnDelivery $cod,
+        ?string $note,
+    ): string {
         $mpdf = new Mpdf([
             'mode' => 'utf-8',
             'format' => [100, 150],
@@ -39,34 +124,52 @@ class GebruderWeissLabelGenerator
             if ($index > 0) {
                 $mpdf->AddPage();
             }
-            $mpdf->WriteHTML($this->buildHtml($request, $request->parcels[$index], $sscc, $index + 1, $total));
+            $mpdf->WriteHTML($this->buildHtml(
+                recipient: $recipient,
+                sender: $sender,
+                reference: $reference,
+                parcel: $parcels[$index],
+                sscc: $sscc,
+                parcelNumber: $index + 1,
+                totalParcels: $total,
+                date: $date,
+                cod: $cod,
+                note: $note,
+            ));
         }
 
         return $mpdf->Output('', 'S');
     }
 
+    /**
+     * @param LabelParty $recipient
+     * @param LabelParty $sender
+     */
     private function buildHtml(
-        ShipmentRequest $request,
+        array $recipient,
+        array $sender,
+        string $reference,
         Parcel $parcel,
         string $sscc,
         int $parcelNumber,
         int $totalParcels,
+        \DateTimeInterface $date,
+        ?CashOnDelivery $cod,
+        ?string $note,
     ): string {
-        $r = $request->recipient;
         $cfg = $this->config;
-        $pickup = $cfg->pickupAddress;
 
-        $recipientName = $r->company ?? $r->fullName();
-        $recipientName2 = $r->company !== null ? $r->fullName() : null;
-        $recipientStreet = $r->streetWithNumber();
-        $recipientZipCountry = $r->country . ' ' . $r->zip;
-        $recipientCity = $r->city;
+        $recipientName = $recipient['name'];
+        $recipientName2 = $recipient['name2'];
+        $recipientStreet = $recipient['street'];
+        $recipientZipCountry = $recipient['country'] . ' ' . $recipient['zip'];
+        $recipientCity = $recipient['city'];
 
-        $senderName = $pickup->name;
-        $senderStreet = $pickup->getStreetWithNumber();
-        $senderZipCity = $pickup->country . ' ' . $pickup->zip . ' ' . $pickup->city;
+        $senderName = $sender['name'];
+        $senderStreet = $sender['street'];
+        $senderZipCity = $sender['country'] . ' ' . $sender['zip'] . ' ' . $sender['city'];
 
-        $date = (new \DateTimeImmutable())->format('d.m.Y');
+        $dateText = $date->format('d.m.Y');
         $weight = number_format($parcel->weight, 2, ',', '.') . ' KG';
 
         $logoHtml = '';
@@ -78,12 +181,15 @@ class GebruderWeissLabelGenerator
         $name2Html = $recipientName2 !== null
             ? '<div style="font-size:11pt; font-weight:bold; line-height:1.1;">' . $this->esc($recipientName2) . '</div>'
             : '';
+        $senderName2Html = $sender['name2'] !== null
+            ? '<div style="font-size:7pt;">' . $this->esc($sender['name2']) . '</div>'
+            : '';
 
         // COD row: when present, service row grows +5mm, barcode row shrinks -5mm
-        $hasCod = $request->cod !== null;
-        $codHtml = $hasCod ? $this->buildCodHtml($request->cod) : '';
-        $hasNote = $request->note !== null && trim($request->note) !== '';
-        $noteHtml = $hasNote ? $this->buildNoteHtml($request->note) : '';
+        $hasCod = $cod !== null;
+        $codHtml = $cod !== null ? $this->buildCodHtml($cod) : '';
+        $hasNote = $note !== null && trim($note) !== '';
+        $noteHtml = $note !== null && $hasNote ? $this->buildNoteHtml($note) : '';
         $serviceRowHeightMm = ($hasCod ? 15 : 10) + ($hasNote ? 9 : 0);
         $barcodeRowHeightMm = 45 - $serviceRowHeightMm;
         $serviceRowHeight = $serviceRowHeightMm . 'mm';
@@ -143,6 +249,7 @@ table { width: 100%; border-collapse: collapse; }
     <td style="border-bottom:0.5pt solid #000; padding:1mm 1.5mm; vertical-align:top; overflow:hidden;">
       <div class="lbl">ODESILATEL:</div>
       <div style="font-size:7.5pt; font-weight:bold;">{$this->esc($senderName)}</div>
+      {$senderName2Html}
       <div style="font-size:7pt;">{$this->esc($senderStreet)}</div>
       <div style="font-size:7pt;">{$this->esc($senderZipCity)}</div>
     </td>
@@ -155,11 +262,11 @@ table { width: 100%; border-collapse: collapse; }
         <tr>
           <td style="width:50%; border-right:0.5pt solid #000; padding:1mm 1.5mm; vertical-align:top;">
             <div class="lbl">Cislo objednavky:</div>
-            <div class="bold">{$this->esc($request->reference)}</div>
+            <div class="bold">{$this->esc($reference)}</div>
           </td>
           <td style="padding:1mm 1.5mm; vertical-align:top;">
             <div class="lbl">Datum zasilky:</div>
-            <div class="bold">{$date}</div>
+            <div class="bold">{$dateText}</div>
           </td>
         </tr>
       </table>
@@ -191,7 +298,7 @@ table { width: 100%; border-collapse: collapse; }
   <tr style="height:{$serviceRowHeight};">
     <td style="border-bottom:0.5pt solid #000; padding:1mm 1.5mm; vertical-align:top; overflow:hidden;">
       <div class="lbl">Cislo zasilky / Service / EP</div>
-      <div class="bold">{$this->esc($request->reference)} /{$this->esc($cfg->branchCode)} /</div>
+      <div class="bold">{$this->esc($reference)} /{$this->esc($cfg->branchCode)} /</div>
       {$codHtml}
       {$noteHtml}
     </td>

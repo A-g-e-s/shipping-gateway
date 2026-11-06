@@ -246,12 +246,14 @@ $tracking = $gateway->tracking($label->carrier, $label->trackingNumber);
 ### Import — svoz od dodavatele (jen Gebrüder Weiss)
 
 Dopravce zboží vyzvedne u dodavatele (`shipper`) a doveze ho na `pickupAddress` z konfigurace; dopravu platí náš `customerId`.
-Štítky lepí dopravce při vyzvednutí, metoda proto nic nevrací — zásilku pak sledujete přes `reference`.
+GBW bez čárového kódu u každého kusu zakázku nepřijme, import proto vrací štítky se SSCC stejně jako export
+(PDF u prvního balíku, odesílatel = dodavatel, příjemce = `pickupAddress`, datum = den vyzvednutí).
+PDF pošlete dodavateli, který štítky nalepí na zboží; zásilku pak sledujete přes `reference`.
 
 ```php
 use Ages\ShippingGateway\Common\Shipment\ImportRequest;
 
-$gateway->createImport(Carrier::GebruderWeiss, new ImportRequest(
+$labels = $gateway->createImport(Carrier::GebruderWeiss, new ImportRequest(
     reference: 'IMP-2026-001',
     shipper: new RecipientAddress(
         firstName: 'Max',
@@ -271,7 +273,8 @@ $gateway->createImport(Carrier::GebruderWeiss, new ImportRequest(
 ));
 ```
 
-> Posílá se `collectionDate`, incoterm `importIncoterm` (výchozí `EXW`, místo = město dodavatele) a balíky bez SSCC – jen typ, počet a váha. `packItems` se vynechává, protože v něm GBW vyžaduje barcode, takže se rozměry neposílají.
+> Posílá se `collectionDate`, incoterm `importIncoterm` (výchozí `EXW`, místo = město dodavatele) a balíky se SSCC, váhou a rozměry jako u exportu.
+> Existuje-li u GBW objednávka se stejnou referencí, vyhodí `ShipmentAlreadyExistsException` se štítky (stejná SSCC).
 > Kontakt (`contacts`) GBW přijímá jen u příjemce, u dodavatele se proto neposílá – jeho telefon jde na začátek poznámky (`Tel. … – poznámka`, celkem max. 100 znaků).
 
 ---
