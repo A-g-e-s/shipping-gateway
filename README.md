@@ -272,6 +272,7 @@ $gateway->createImport(Carrier::GebruderWeiss, new ImportRequest(
 ```
 
 > Posílá se `collectionDate`, incoterm `importIncoterm` (výchozí `EXW`, místo = město dodavatele) a balíky bez SSCC (váha, příp. rozměry).
+> Kontakt (`contacts`) GBW přijímá jen u příjemce, u dodavatele se proto neposílá – jeho telefon jde na začátek poznámky (`Tel. … – poznámka`, celkem max. 100 znaků).
 
 ---
 

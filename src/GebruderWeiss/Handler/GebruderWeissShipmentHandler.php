@@ -155,8 +155,9 @@ class GebruderWeissShipmentHandler extends GebruderWeissApi implements ShipmentH
             'collectionDate' => $request->collectionDate->format('Y-m-d'),
         ];
 
-        if ($request->note !== null) {
-            $requirements['note'] = $this->buildNote($request->note);
+        $note = $this->buildImportNote($request);
+        if ($note !== null) {
+            $requirements['note'] = $this->buildNote($note);
         }
 
         return [
@@ -176,6 +177,21 @@ class GebruderWeissShipmentHandler extends GebruderWeissApi implements ShipmentH
                 ),
             ],
         ];
+    }
+
+    /**
+     * Dodavatel jako odesílatel nesmí mít kontakt (GBW ho bere jen u příjemce),
+     * telefon pro řidiče proto jde na začátek poznámky, aby ho neuřízl limit délky.
+     */
+    private function buildImportNote(ImportRequest $request): ?string
+    {
+        $phone = trim($request->shipper->phone);
+        $parts = array_filter([
+            $phone !== '' ? 'Tel. ' . $phone : null,
+            $request->note,
+        ], fn($v) => $v !== null && $v !== '');
+
+        return $parts !== [] ? implode(' – ', $parts) : null;
     }
 
     /**
@@ -244,17 +260,22 @@ class GebruderWeissShipmentHandler extends GebruderWeissApi implements ShipmentH
             'countryCode' => $r->country,
         ], fn($v) => $v !== null && $v !== '');
 
+        $data = [
+            'addressType' => $addressType,
+            'address' => $address,
+        ];
+
+        // GBW přijímá kontakt jen u příjemce, u jiné adresy vrací 400 „invalid parameter value: contact“.
+        if ($addressType !== 'CONSIGNEE') {
+            return $data;
+        }
+
         $contact = array_filter([
             'name' => $r->firstName ?: null,
             'surname' => $r->lastName ?: null,
             'email' => $r->email ?: null,
             'phone' => $r->phone ?: null,
         ], fn($v) => $v !== null);
-
-        $data = [
-            'addressType' => $addressType,
-            'address' => $address,
-        ];
 
         if (!empty($contact)) {
             $data['contacts'] = [$contact];
