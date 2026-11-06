@@ -321,18 +321,26 @@ class GebruderWeissShipmentHandler extends GebruderWeissApi implements ShipmentH
     }
 
     /**
+     * Bez SSCC (import – štítky lepí dopravce) se packItems vynechá: GBW v packItem vyžaduje barcode
+     * (jinak 400 „missing mandatory parameter: [packItem.barcode]“), takže zůstane jen počet, typ a váha.
+     *
      * @return array<string, mixed>
      */
     private function buildGoodsItem(Parcel $parcel, ?string $sscc): array
     {
-        $packItem = [
-            'measurements' => [
-                [
-                    'measureQualifier' => 'GROSS_WEIGHT',
-                    'measureUnit' => 'KGM',
-                    'measure' => (int) round($parcel->weight),
-                ],
+        $weight = [
+            [
+                'measureQualifier' => 'GROSS_WEIGHT',
+                'measureUnit' => 'KGM',
+                'measure' => (int) round($parcel->weight),
             ],
+        ];
+
+        $goodsItem = [
+            'quantity' => 1,
+            'packageType' => $this->getPackageTypeCode($parcel->type),
+            'description' => $this->config->goodsDescription,
+            'stackable' => false,
         ];
 
         if ($sscc !== null) {
@@ -341,33 +349,25 @@ class GebruderWeissShipmentHandler extends GebruderWeissApi implements ShipmentH
                     'barcodeType' => 'SSCC',
                     'barcode' => '00' . $sscc,
                 ],
-            ] + $packItem;
-        }
-
-        if ($parcel->dimensions !== null) {
-            $d = $parcel->dimensions;
-            $packItem['dimension'] = [
-                'length' => round($d->length / 100, 4),
-                'width' => round($d->width / 100, 4),
-                'height' => round($d->height / 100, 4),
-                'dimensionUnit' => 'MTR',
+                'measurements' => $weight,
             ];
+
+            if ($parcel->dimensions !== null) {
+                $d = $parcel->dimensions;
+                $packItem['dimension'] = [
+                    'length' => round($d->length / 100, 4),
+                    'width' => round($d->width / 100, 4),
+                    'height' => round($d->height / 100, 4),
+                    'dimensionUnit' => 'MTR',
+                ];
+            }
+
+            $goodsItem['packItems'] = [$packItem];
         }
 
-        return [
-            'quantity' => 1,
-            'packageType' => $this->getPackageTypeCode($parcel->type),
-            'description' => $this->config->goodsDescription,
-            'stackable' => false,
-            'packItems' => [$packItem],
-            'measurements' => [
-                [
-                    'measureQualifier' => 'GROSS_WEIGHT',
-                    'measureUnit' => 'KGM',
-                    'measure' => (int) round($parcel->weight),
-                ],
-            ],
-        ];
+        $goodsItem['measurements'] = $weight;
+
+        return $goodsItem;
     }
 
     /**
