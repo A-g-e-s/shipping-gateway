@@ -12,6 +12,8 @@ use Ages\ShippingGateway\Common\ShipmentAlreadyExistsException;
 use Ages\ShippingGateway\Common\ShippingException;
 use Ages\ShippingGateway\CzechPost\Config\CzechPostConfig;
 use Ages\ShippingGateway\CzechPost\Handler\CzechPostShipmentHandler;
+use Ages\ShippingGateway\Dpd\Config\DpdConfig;
+use Ages\ShippingGateway\Dpd\Handler\DpdShipmentHandler;
 use Ages\ShippingGateway\GebruderWeiss\Config\GebruderWeissConfig;
 use Ages\ShippingGateway\GebruderWeiss\Handler\GebruderWeissShipmentHandler;
 use Ages\ShippingGateway\Gls\Config\GlsConfig;
@@ -34,6 +36,7 @@ class ShippingGateway
     private ?PersonalCollectionShipmentHandler $personalCollectionHandler = null;
     private ?SupplierDeliveryShipmentHandler $supplierDeliveryHandler = null;
     private ?OneByAllegroShipmentHandler $oneByAllegroHandler = null;
+    private ?DpdShipmentHandler $dpdHandler = null;
 
     public function __construct(
         private readonly ?GlsConfig                  $glsConfig = null,
@@ -43,6 +46,7 @@ class ShippingGateway
         private readonly ?PersonalCollectionConfig   $personalCollectionConfig = null,
         private readonly ?SupplierDeliveryConfig     $supplierDeliveryConfig = null,
         private readonly ?OneByAllegroConfig         $oneByAllegroConfig = null,
+        private readonly ?DpdConfig                  $dpdConfig = null,
     )
     {
     }
@@ -61,6 +65,7 @@ class ShippingGateway
                 Carrier::PersonalCollection => null,
                 Carrier::SupplierDelivery   => null,
                 Carrier::OneByAllegro       => $this->oneByAllegroShipmentHandler()->getParcelTracking($consignmentId),
+                Carrier::Dpd                => $this->dpdShipmentHandler()->getParcelTracking($consignmentId),
             };
         } catch (ShippingException $e) {
             throw $e;
@@ -83,6 +88,7 @@ class ShippingGateway
                 Carrier::PersonalCollection => '',
                 Carrier::SupplierDelivery   => '',
                 Carrier::OneByAllegro       => $this->oneByAllegroShipmentHandler()->getTrackingUrl($consignmentId),
+                Carrier::Dpd                => $this->dpdShipmentHandler()->getTrackingUrl($consignmentId),
             };
         } catch (ShippingException $e) {
             throw $e;
@@ -106,6 +112,7 @@ class ShippingGateway
                 Carrier::PersonalCollection => $this->personalCollectionShipmentHandler(),
                 Carrier::SupplierDelivery   => $this->supplierDeliveryShipmentHandler(),
                 Carrier::OneByAllegro       => $this->oneByAllegroShipmentHandler(),
+                Carrier::Dpd                => $this->dpdShipmentHandler(),
             };
             return $handler->createShipment($request);
         } catch (ShippingException $e) {
@@ -200,5 +207,21 @@ class ShippingGateway
     {
         if ($this->oneByAllegroConfig === null) throw new ConfigException('OneByAllegroConfig not configured');
         return $this->oneByAllegroHandler ??= new OneByAllegroShipmentHandler($this->oneByAllegroConfig);
+    }
+
+    /**
+     * Přímý přístup k DPD GeoAPI – svozy (pickup orders), zákazníci a adresy (GET /me), služby.
+     *
+     * @throws ConfigException
+     */
+    public function dpd(): DpdShipmentHandler
+    {
+        return $this->dpdShipmentHandler();
+    }
+
+    private function dpdShipmentHandler(): DpdShipmentHandler
+    {
+        if ($this->dpdConfig === null) throw new ConfigException('DpdConfig not configured');
+        return $this->dpdHandler ??= new DpdShipmentHandler($this->dpdConfig);
     }
 }

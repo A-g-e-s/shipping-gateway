@@ -1,6 +1,6 @@
 # ages/shipping-gateway
 
-Unified PHP library for shipping carrier integrations — **GLS**, **PPL**, **Czech Post**, **Gebrüder Weiss**, **One by Allegro**.  
+Unified PHP library for shipping carrier integrations — **GLS**, **PPL**, **Czech Post**, **Gebrüder Weiss**, **One by Allegro**, **DPD**.  
 Single entry point, config-driven credentials and pickup address, compatible with Nette + Nextras.
 
 ---
@@ -14,6 +14,7 @@ Single entry point, config-driven credentials and pickup address, compatible wit
 | Česká pošta | https://www.postaonline.cz/dokumentaceapi/b2b/ |
 | Gebrüder Weiss | https://developer.my.gw-world.com/#/apis |
 | One by Allegro | https://api.onedelivery.tech/parcels/swagger.html |
+| DPD (GeoAPI) | https://geoapi.dpd.cz/v1/swagger/ (tracking https://geoapi.dpd.cz/v2/swagger/) |
 
 ---
 
@@ -121,12 +122,27 @@ services:
         # defaultHeight: 15
     )
 
+    dpdConfig: Ages\ShippingGateway\Dpd\Config\DpdConfig(
+        apiKey: API_KEY                    # klíč GeoAPI účtu (hlavička x-api-key)
+        customerDsw: '12345678901'         # zákaznické číslo DPD (DSW)
+        pickupAddress: @pickupAddress
+        # senderAddressId: 123456          # it4emId registrované adresy z GET /me – odesílatel + svozy (pickup orders)
+        # url: https://geoapi-test.dpd.cz  # test
+        # labelFormat: Ages\ShippingGateway\Dpd\Values\LabelFormat::PdfA4   # výchozí PdfA6, A4 = 4 štítky na stránku
+        # notification: false              # Predict (SMS/e-mail příjemci), výchozí zapnuto
+        # insureValue: true                # pojištění na ShipmentValue, výchozí vypnuto
+    )
+
     - Ages\ShippingGateway\ShippingGateway
 ```
 
 > **One by Allegro** doručuje jen do **CZ a SK**, odesílatel musí být v CZ. Bez `parcelShopCode` jde zásilka kurýrem (`TO_DOOR`),
 > s `parcelShopCode` (= `id` výdejního místa, např. `OXBOX32992`) do One Boxu / One Pointu – typ místa určí API.
 > Telefon se převádí na `+420…` / `+421…`, ulice bez `houseNumber` se rozdělí podle čísla na konci („Hlavní 42/5“ → `Hlavní`, `42/5`).
+
+> **DPD** zakládá zásilky typu `Standard` pod `customerDsw`. `parcelShopCode` = ID výdejního místa (např. `CZ10190`, služba `pickupPoint`),
+> dobírka se posílá v haléřích s platbou `CashOrCard` a variabilním symbolem (jen číslice, max 10). Firma jde do `name1`, osoba do `name2` a kontaktu.
+> Ulice a telefon se upravují stejně jako u One by Allegro. `senderAddressId` a DSW najdete přes `$gateway->dpd()->getMe()`.
 
 > **Certifikát České pošty** (`postsignum-bundle.pem`) je třeba umístit ručně do projektu.  
 > Cesta se nastavuje přes `certificatePath` — nikdy se nekopíruje do balíčku.
@@ -187,7 +203,7 @@ foreach ($labels as $label) {
 }
 ```
 
-Dostupné hodnoty `Carrier`: `Carrier::Gls`, `Carrier::Ppl`, `Carrier::CzechPost`, `Carrier::GebruderWeiss`, `Carrier::OneByAllegro`.
+Dostupné hodnoty `Carrier`: `Carrier::Gls`, `Carrier::Ppl`, `Carrier::CzechPost`, `Carrier::GebruderWeiss`, `Carrier::OneByAllegro`, `Carrier::Dpd`.
 
 ---
 
@@ -252,7 +268,7 @@ file_put_contents('/path/to/' . $label->trackingNumber . '.pdf', $label->labelPd
 $tracking = $gateway->tracking($label->carrier, $label->trackingNumber);
 ```
 
-> **Více balíků — GLS / PPL / Czech Post:** API vrátí jeden kombinovaný PDF soubor pro všechny balíky.  
+> **Více balíků — GLS / PPL / Czech Post / DPD:** API vrátí jeden kombinovaný PDF soubor pro všechny balíky.  
 > Každý `ShipmentLabel` má svůj `trackingNumber`, `labelPdf` je u všech shodné (kombinovaný tisk).
 >
 > **Více balíků — One by Allegro:** jedna zásilka (`shipmentId`) s více balíky; každý `ShipmentLabel` nese `shipmentId`
@@ -308,6 +324,7 @@ $tracking = $gateway->tracking(Carrier::Ppl, 'KEA12345678');
 $tracking = $gateway->tracking(Carrier::CzechPost, 'DR123456789CZ');
 $tracking = $gateway->tracking(Carrier::GebruderWeiss, 'ORDER-2026-001'); // reference zásilky / orderId
 $tracking = $gateway->tracking(Carrier::OneByAllegro, 'SHIP12345');         // shipmentId
+$tracking = $gateway->tracking(Carrier::Dpd, '13815045502659');             // číslo balíku (14 číslic)
 
 $trackingUrl = $gateway->trackingUrl(Carrier::Gls, '1234567890');
 $trackingUrl = $gateway->trackingUrl(Carrier::Ppl, 'KEA12345678');
@@ -369,6 +386,24 @@ $detail = $api->getShipment($shipmentId);  // ShipmentDetailResponse
 ```
 
 > Stavy zásilky: `DOR` = doručeno, `USZ` / `ZAG` = poškozeno / ztraceno (`damaged`). Číselník: https://api.onedelivery.tech/parcels/statuses.csv
+
+### DPD — svozy a nastavení účtu
+
+```php
+$dpd = $gateway->dpd();
+
+$me = $dpd->getMe();                       // zákazníci (DSW) a registrované adresy (it4emId)
+$dpd->getShippingServices();               // dostupné kombinace služeb
+
+$orders = $dpd->createPickupOrder(new \DateTimeImmutable('tomorrow'), 'Rampa 2'); // kurýr na senderAddressId
+$dpd->getPickupOrder($orders[0]['id']);
+$dpd->cancelPickupOrder($orders[0]['id']);
+
+$dpd->getLabels(['13815045502659']);       // znovu stáhnout štítky (PDF)
+```
+
+> Tracking jde přes GeoAPI v2, `null` = DPD balík zatím nezná (HTTP 404). Doručení se pozná podle kódu `13` / `23`
+> nebo podle popisu („Doručeno“, „Delivered“) – GeoAPI číselník stavů nepublikuje. Váhu tracking nevrací (`weight` = 0).
 
 ---
 
@@ -475,6 +510,7 @@ src/
 │   ├── Carrier.php                   ← enum: Gls | Ppl | CzechPost | GebruderWeiss
 │   ├── CarrierInterface.php
 │   ├── ShipmentHandlerInterface.php  ← createShipment(ShipmentRequest): ShipmentLabel[]
+│   ├── AddressFormatter.php          ← ulice/číslo domu, telefon v mezinárodním tvaru
 │   ├── ParcelTrackingInterface.php
 │   ├── ParcelStatusInterface.php
 │   ├── PickupAddress.php
@@ -513,6 +549,12 @@ src/
     └── Tracking/
         ├── GbwParcelTracking.php
         └── GbwParcelStatus.php
+├── Dpd/
+│   ├── Config/DpdConfig.php
+│   ├── DpdApi.php                    ← x-api-key, shipments, labels, tracking (v2), me, pickup orders
+│   ├── Handler/DpdShipmentHandler.php
+│   ├── Tracking/
+│   └── Values/
 └── OneByAllegro/
     ├── Config/OneByAllegroConfig.php
     ├── OneByAllegroApi.php           ← auth token, shipments, labels, tracking, points, pickups
