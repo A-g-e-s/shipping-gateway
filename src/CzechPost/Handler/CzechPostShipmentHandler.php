@@ -82,6 +82,9 @@ class CzechPostShipmentHandler extends CzechPostApi implements ShipmentHandlerIn
         return $this->parseResponse($response);
     }
 
+    /**
+     * @param array{int, int}|null $multipart [pořadí balíku, celkový počet balíků]
+     */
     private function buildParams(Parcel $parcel, string $recordId, ShipmentRequest $request, ?array $multipart, bool $isPsd = false): ParcelParamsEntity
     {
         $params = ParcelParamsEntity::of(

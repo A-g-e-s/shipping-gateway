@@ -8,12 +8,12 @@ use Ages\ShippingGateway\CzechPost\Entity\Values\ParcelAddressSubject;
 class ParcelAddressEntity extends AbstractEntity
 {
     private ?string $recordID;
-    private ?string $firstName;
-    private ?string $surname;
+    private string $firstName;
+    private string $surname;
     private ?string $company;
     private ?string $aditionAddress;
     private ParcelAddressSubject $subject;
-    private ?string $mobilNumber;
+    private string $mobilNumber;
     private ?string $phoneNumber;
     private string $emailAddress;
     private AddressEntity $address;
@@ -55,10 +55,10 @@ class ParcelAddressEntity extends AbstractEntity
             'address' => $this->address->toArray(),
         ];
         if ($this->recordID !== null) { $e['recordID'] = $this->recordID; }
-        if ($this->firstName !== null) { $e['firstName'] = $this->firstName; }
-        if ($this->surname !== null) { $e['surname'] = $this->surname; }
+        $e['firstName'] = $this->firstName;
+        $e['surname'] = $this->surname;
         if ($this->company !== null) { $e['company'] = $this->company; }
-        if ($this->mobilNumber !== null) { $e['mobilNumber'] = $this->mobilNumber; }
+        $e['mobilNumber'] = $this->mobilNumber;
         if ($this->phoneNumber !== null) { $e['phoneNumber'] = $this->phoneNumber; }
         if ($this->emailAddress !== '') { $e['emailAddress'] = $this->emailAddress; }
         if ($this->aditionAddress !== null) { $e['aditionAddress'] = $this->aditionAddress; }

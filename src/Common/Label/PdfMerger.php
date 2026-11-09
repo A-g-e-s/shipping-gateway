@@ -51,11 +51,7 @@ final class PdfMerger
                 }
             }
 
-            $merged = $pdf->Output('', 'S');
-            if (!is_string($merged)) {
-                throw new ShippingException('PdfMerger: mPDF returned no output');
-            }
-            return $merged;
+            return PdfOutput::toString($pdf, 'PdfMerger');
         } finally {
             foreach ($temporaryFiles as $temporaryFile) {
                 if (is_file($temporaryFile)) {

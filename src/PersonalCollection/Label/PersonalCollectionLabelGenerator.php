@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Ages\ShippingGateway\PersonalCollection\Label;
 
+use Ages\ShippingGateway\Common\Label\PdfOutput;
 use Ages\ShippingGateway\Common\PickupAddress;
 use Ages\ShippingGateway\Common\Shipment\Parcel;
 use Ages\ShippingGateway\Common\Shipment\ShipmentRequest;
@@ -41,14 +42,14 @@ class PersonalCollectionLabelGenerator
         $mpdf->SetAutoPageBreak(false);
 
         $total = count($request->parcels);
-        foreach ($request->parcels as $index => $parcel) {
+        foreach (array_values($request->parcels) as $index => $parcel) {
             if ($index > 0) {
                 $mpdf->AddPage();
             }
             $mpdf->WriteHTML($this->buildHtml($request, $parcel, $index + 1, $total));
         }
 
-        return $mpdf->Output('', 'S');
+        return PdfOutput::toString($mpdf, 'Personal collection label');
     }
 
     private function buildHtml(

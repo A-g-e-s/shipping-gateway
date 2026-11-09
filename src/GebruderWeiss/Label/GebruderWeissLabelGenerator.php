@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Ages\ShippingGateway\GebruderWeiss\Label;
 
+use Ages\ShippingGateway\Common\Label\PdfOutput;
 use Ages\ShippingGateway\Common\Shipment\CashOnDelivery;
 use Ages\ShippingGateway\Common\Shipment\ImportRequest;
 use Ages\ShippingGateway\Common\Shipment\Parcel;
@@ -119,6 +120,8 @@ class GebruderWeissLabelGenerator
         ]);
         $mpdf->SetAutoPageBreak(false);
 
+        $parcels = array_values($parcels);
+        $ssccCodes = array_values($ssccCodes);
         $total = count($ssccCodes);
         foreach ($ssccCodes as $index => $sscc) {
             if ($index > 0) {
@@ -138,7 +141,7 @@ class GebruderWeissLabelGenerator
             ));
         }
 
-        return $mpdf->Output('', 'S');
+        return PdfOutput::toString($mpdf, 'GBW label');
     }
 
     /**

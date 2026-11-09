@@ -25,12 +25,15 @@ enum Product: string
 
     public static function resolve(bool $international, bool $pickupPoint, bool $cod): self
     {
-        return match (true) {
-            !$international && !$pickupPoint => $cod ? self::PrivateCod : self::Private,
-            !$international && $pickupPoint  => $cod ? self::SmartCod : self::Smart,
-            $international && !$pickupPoint  => $cod ? self::ConnectCod : self::Connect,
-            default                          => $cod ? self::SmartEuropeCod : self::SmartEurope,
-        };
+        if (!$international) {
+            return $pickupPoint
+                ? ($cod ? self::SmartCod : self::Smart)
+                : ($cod ? self::PrivateCod : self::Private);
+        }
+
+        return $pickupPoint
+            ? ($cod ? self::SmartEuropeCod : self::SmartEurope)
+            : ($cod ? self::ConnectCod : self::Connect);
     }
 
     public function isInternational(): bool
