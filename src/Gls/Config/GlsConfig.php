@@ -13,6 +13,8 @@ readonly class GlsConfig
         public PickupAddress $pickupAddress,
         public string        $url = 'https://api.mygls.cz/ParcelService.svc/json/',
         public int           $packageLimit = 99,
+        /** Timeout požadavku v sekundách, null = GlsApi::DefaultTimeoutSeconds. */
+        public ?float        $timeout = null,
     ) {
     }
 }

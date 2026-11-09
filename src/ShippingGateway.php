@@ -26,6 +26,7 @@ use Ages\ShippingGateway\Ppl\Config\PplConfig;
 use Ages\ShippingGateway\Ppl\Handler\PplShipmentHandler;
 use Ages\ShippingGateway\SupplierDelivery\Config\SupplierDeliveryConfig;
 use Ages\ShippingGateway\SupplierDelivery\Handler\SupplierDeliveryShipmentHandler;
+use GuzzleHttp\ClientInterface;
 
 class ShippingGateway
 {
@@ -37,6 +38,7 @@ class ShippingGateway
     private ?SupplierDeliveryShipmentHandler $supplierDeliveryHandler = null;
     private ?OneByAllegroShipmentHandler $oneByAllegroHandler = null;
     private ?DpdShipmentHandler $dpdHandler = null;
+    private ?ClientInterface $httpClient = null;
 
     public function __construct(
         private readonly ?GlsConfig                  $glsConfig = null,
@@ -49,6 +51,18 @@ class ShippingGateway
         private readonly ?DpdConfig                  $dpdConfig = null,
     )
     {
+    }
+
+    /**
+     * Vlastní Guzzle klient pro všechny dopravce (testy s MockHandler, proxy, logování).
+     * Nastavit před prvním voláním dopravce – už vytvořené handlery si drží původního klienta.
+     * Timeouty a http_errors nastavuje společná vrstva Common\Http\HttpClient u každého požadavku.
+     */
+    public function setHttpClient(?ClientInterface $httpClient): void
+    {
+        $this->httpClient = $httpClient;
+        $this->glsHandler = $this->pplHandler = $this->czechPostHandler = $this->gwHandler = null;
+        $this->oneByAllegroHandler = $this->dpdHandler = null;
     }
 
     /**
@@ -160,25 +174,25 @@ class ShippingGateway
     private function glsShipmentHandler(): GlsShipmentHandler
     {
         if ($this->glsConfig === null) throw new ConfigException('GlsConfig not configured');
-        return $this->glsHandler ??= new GlsShipmentHandler($this->glsConfig);
+        return $this->glsHandler ??= new GlsShipmentHandler($this->glsConfig, $this->httpClient);
     }
 
     private function pplShipmentHandler(): PplShipmentHandler
     {
         if ($this->pplConfig === null) throw new ConfigException('PplConfig not configured');
-        return $this->pplHandler ??= new PplShipmentHandler($this->pplConfig);
+        return $this->pplHandler ??= new PplShipmentHandler($this->pplConfig, $this->httpClient);
     }
 
     private function czechPostShipmentHandler(): CzechPostShipmentHandler
     {
         if ($this->czechPostConfig === null) throw new ConfigException('CzechPostConfig not configured');
-        return $this->czechPostHandler ??= new CzechPostShipmentHandler($this->czechPostConfig);
+        return $this->czechPostHandler ??= new CzechPostShipmentHandler($this->czechPostConfig, $this->httpClient);
     }
 
     private function gwShipmentHandler(): GebruderWeissShipmentHandler
     {
         if ($this->gwConfig === null) throw new ConfigException('GebruderWeissConfig not configured');
-        return $this->gwHandler ??= new GebruderWeissShipmentHandler($this->gwConfig);
+        return $this->gwHandler ??= new GebruderWeissShipmentHandler($this->gwConfig, $this->httpClient);
     }
 
     private function personalCollectionShipmentHandler(): PersonalCollectionShipmentHandler
@@ -206,7 +220,7 @@ class ShippingGateway
     private function oneByAllegroShipmentHandler(): OneByAllegroShipmentHandler
     {
         if ($this->oneByAllegroConfig === null) throw new ConfigException('OneByAllegroConfig not configured');
-        return $this->oneByAllegroHandler ??= new OneByAllegroShipmentHandler($this->oneByAllegroConfig);
+        return $this->oneByAllegroHandler ??= new OneByAllegroShipmentHandler($this->oneByAllegroConfig, $this->httpClient);
     }
 
     /**
@@ -222,6 +236,6 @@ class ShippingGateway
     private function dpdShipmentHandler(): DpdShipmentHandler
     {
         if ($this->dpdConfig === null) throw new ConfigException('DpdConfig not configured');
-        return $this->dpdHandler ??= new DpdShipmentHandler($this->dpdConfig);
+        return $this->dpdHandler ??= new DpdShipmentHandler($this->dpdConfig, $this->httpClient);
     }
 }

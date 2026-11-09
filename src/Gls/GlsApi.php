@@ -12,19 +12,28 @@ use Ages\ShippingGateway\Gls\Entity\ParcelStatus;
 use Ages\ShippingGateway\Gls\Entity\ParcelTracking;
 use Ages\ShippingGateway\Gls\Values\Method;
 use Ages\ShippingGateway\Gls\Values\RequestObject;
-use GuzzleHttp\Client;
-use GuzzleHttp\Exception\GuzzleException;
+use Ages\ShippingGateway\Common\Http\HttpClient;
+use GuzzleHttp\ClientInterface;
 use UnexpectedValueException;
 
 class GlsApi implements CarrierInterface
 {
     public const string TrackUrl = 'https://gls-group.com/CZ/cs/sledovani-zasilek/?match=';
 
-    private Client $httpClient;
+    /** PrintLabels umí trvat dlouho – výchozí timeout, lze přepsat v GlsConfig::$timeout. */
+    public const float DefaultTimeoutSeconds = 120.0;
 
-    public function __construct(protected readonly GlsConfig $config)
+    private readonly HttpClient $http;
+
+    public function __construct(protected readonly GlsConfig $config, ?ClientInterface $httpClient = null)
     {
-        $this->httpClient = new Client();
+        $this->http = new HttpClient('GLS', $this->config->url, [
+            'Accept' => 'application/json',
+            'Content-Type' => 'application/json',
+        ], [
+            'timeout' => $this->config->timeout ?? self::DefaultTimeoutSeconds,
+            'connect_timeout' => 15.0,
+        ], $httpClient);
     }
 
     protected function getPickupAddress(): AddressEntity
@@ -231,30 +240,6 @@ class GlsApi implements CarrierInterface
      */
     protected function getResponse(Method $method, array $payload): string
     {
-        $url = $this->config->url . $method->value;
-        try {
-            $response = $this->httpClient->post($url, [
-                'headers' => [
-                    'Accept' => 'application/json',
-                    'Content-Type' => 'application/json'
-                ],
-                'json' => $payload,
-                'timeout' => 600,
-                'connect_timeout' => 15,
-                'http_errors' => false,
-                'verify' => true,
-            ]);
-            if ($response->getStatusCode() !== 200) {
-                throw new ShippingException('GLS: HTTP ' . $response->getStatusCode() . ': ' . (string) $response->getBody());
-            }
-            $body = $response->getBody();
-            $text = $body->getContents();
-            $body->close();
-            return $text;
-        } catch (ShippingException $e) {
-            throw $e;
-        } catch (GuzzleException $e) {
-            throw new ShippingException('GLS HTTP error: ' . $e->getMessage(), 0, $e);
-        }
+        return $this->http->send('POST', $method->value, ['json' => $payload]);
     }
 }

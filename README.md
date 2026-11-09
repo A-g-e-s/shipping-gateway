@@ -75,6 +75,7 @@ services:
         clientNumber: 12345678
         pickupAddress: @pickupAddress
         # url: https://api.test.mygls.cz/ParcelService.svc/json/   # test endpoint
+        # timeout: 300.0   # sekundy, výchozí 120
     )
 
     pplConfig: Ages\ShippingGateway\Ppl\Config\PplConfig(
@@ -508,6 +509,39 @@ class CzechPost extends CzechPostApi
 
 ---
 
+## HTTP vrstva a chyby
+
+Všichni dopravci posílají požadavky přes `Common\Http\HttpClient`:
+
+- **Timeouty** – výchozí `timeout` 30 s, `connect_timeout` 10 s. Výjimky: DPD 60 s, Česká pošta 15 s
+  (+ `verify` = `certificatePath`), GLS 120 s (`GlsApi::DefaultTimeoutSeconds`, přepíše `GlsConfig` parametr `timeout`).
+- **Chyby** – vše je `ShippingException`. Chyba spojení / timeout: `"<Dopravce> <METODA> <cesta> request error: …"`
+  (Guzzle výjimka v `getPrevious()`). HTTP ≥ 400: `HttpStatusException` s HTTP kódem v `getCode()`, zprávou
+  `"<Dopravce> <METODA> <cesta> HTTP <kód>: <chyba z těla>"` a celým tělem v `getResponseBody()`.
+  `CzechPostException` je potomek `ShippingException` a dál nese `getExtra()`.
+- **Tokeny** – PPL (OAuth, 30 min), Gebrüder Weiss (OAuth, token pro každý scope) a One by Allegro si token drží
+  v `TokenCache`: obnoví ho 60 s před vypršením (`expires_in`; když chybí, po 25 min) a při odpovědi 401 jednou
+  získají nový token a požadavek zopakují. Dlouho běžící procesy (cron s hromadným trackingem) tak nespadnou na 401.
+
+Vlastní Guzzle klienta (testy s `MockHandler`, proxy, logování) lze podstrčit – volitelný druhý parametr
+konstruktoru každého `*Api` / `*ShipmentHandler`, nebo pro všechny dopravce najednou:
+
+```php
+$gateway->setHttpClient(new GuzzleHttp\Client(['handler' => $handlerStack]));
+```
+
+`http_errors` a timeouty nastavuje `HttpClient` u každého požadavku, takže na nastavení podstrčeného klienta nezáleží.
+
+## Development
+
+```bash
+composer install
+vendor/bin/phpunit
+vendor/bin/phpstan analyse
+```
+
+Testy (`tests/`) běží jen proti `GuzzleHttp\Handler\MockHandler`, ostrá API nevolají.
+
 ## Architecture overview
 
 ```
@@ -522,6 +556,11 @@ src/
 │   ├── ParcelStatusInterface.php
 │   ├── PickupAddress.php
 │   ├── ShippingException.php
+│   ├── Http/
+│   │   ├── HttpClient.php            ← společný obal nad Guzzle: base URL, hlavičky, timeouty, chyby, Bearer + retry po 401
+│   │   ├── HttpStatusException.php   ← HTTP ≥ 400, kód v getCode(), tělo v getResponseBody()
+│   │   ├── TokenCache.php            ← tokeny s expirací (PPL, GW podle scope, One by Allegro)
+│   │   └── AccessToken.php
 │   └── Shipment/
 │       ├── ShipmentRequest.php       ← vstupní DTO
 │       ├── ShipmentLabel.php         ← výstupní DTO (carrier, trackingNumber, labelPdf)

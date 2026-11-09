@@ -8,23 +8,24 @@ use Ages\ShippingGateway\CzechPost\Config\CzechPostConfig;
 use Ages\ShippingGateway\CzechPost\Entity\ParcelStatus;
 use Ages\ShippingGateway\CzechPost\Entity\ParcelTracking;
 use Ages\ShippingGateway\CzechPost\Entity\Values\Method;
-use GuzzleHttp\Client;
-use GuzzleHttp\Exception\GuzzleException;
+use Ages\ShippingGateway\Common\Http\HttpClient;
+use Ages\ShippingGateway\Common\ShippingException;
+use GuzzleHttp\ClientInterface;
 use Random\RandomException;
 
 class CzechPostApi implements CarrierInterface
 {
     public const string TrackUrl = 'https://www.postaonline.cz/trackandtrace/-/zasilka/';
 
-    private Client $httpClient;
+    private readonly HttpClient $http;
 
-    public function __construct(protected readonly CzechPostConfig $config)
+    public function __construct(protected readonly CzechPostConfig $config, ?ClientInterface $httpClient = null)
     {
-        $this->httpClient = new Client([
-            'verify' => $config->certificatePath,
+        $this->http = new HttpClient('Czech Post', $this->config->url, [], [
+            'verify' => $this->config->certificatePath,
             'timeout' => 15.0,
             'connect_timeout' => 10.0,
-        ]);
+        ], $httpClient);
     }
 
     /**
@@ -35,7 +36,6 @@ class CzechPostApi implements CarrierInterface
      */
     private function getResponse(Method $method, array $data): array
     {
-        $url = $this->config->url . $method->value;
         $bodyString = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         if ($bodyString === false) {
             throw new CzechPostException('Incorrect request data');
@@ -53,15 +53,12 @@ class CzechPostApi implements CarrierInterface
             'Authorization' => sprintf('CP-HMAC-SHA256 nonce="%s" signature="%s"', $nonce, $signature),
         ];
         try {
-            $response = $this->httpClient->post($url, [
+            $response = $this->http->request('POST', $method->value, [
                 'headers' => $headers,
                 'body' => $bodyString,
-                'timeout' => 15.0,
-                'connect_timeout' => 10.0,
-                'http_errors' => false,
             ]);
-        } catch (GuzzleException $e) {
-            throw new CzechPostException('HTTP client error: ' . $e->getMessage(), 0, ['exception' => (string)$e]);
+        } catch (ShippingException $e) {
+            throw new CzechPostException('HTTP client error: ' . $e->getMessage(), 0, ['exception' => (string) ($e->getPrevious() ?? $e)]);
         }
 
         $status = $response->getStatusCode();

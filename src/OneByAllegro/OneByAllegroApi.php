@@ -12,8 +12,11 @@ use Ages\ShippingGateway\OneByAllegro\Tracking\OneByAllegroParcelStatus;
 use Ages\ShippingGateway\OneByAllegro\Tracking\OneByAllegroParcelTracking;
 use Ages\ShippingGateway\OneByAllegro\Values\LabelFormat;
 use Ages\ShippingGateway\OneByAllegro\Values\Method;
-use GuzzleHttp\Client;
-use GuzzleHttp\Exception\GuzzleException;
+use Ages\ShippingGateway\Common\Http\AccessToken;
+use Ages\ShippingGateway\Common\Http\HttpClient;
+use Ages\ShippingGateway\Common\Http\HttpStatusException;
+use Ages\ShippingGateway\Common\Http\TokenCache;
+use GuzzleHttp\ClientInterface;
 
 /**
  * One by Allegro (OneDelivery) Parcels API – https://api.onedelivery.tech/parcels/swagger.html
@@ -21,20 +24,26 @@ use GuzzleHttp\Exception\GuzzleException;
 class OneByAllegroApi implements CarrierInterface
 {
     private const string ContentType = 'application/vnd.onedelivery.public.v1+json';
-    /** Token se obnoví s rezervou před vypršením. */
-    private const int TokenExpiryMarginSeconds = 60;
     private const int TimeoutSeconds = 30;
 
-    private ?string $token = null;
-    private int $tokenExpiresAt = 0;
-    private Client $httpClient;
+    private readonly HttpClient $http;
+    private readonly TokenCache $tokens;
 
-    public function __construct(protected readonly OneByAllegroConfig $config)
+    public function __construct(protected readonly OneByAllegroConfig $config, ?ClientInterface $httpClient = null)
     {
-        $this->httpClient = new Client([
-            'http_errors' => false,
-            'timeout' => self::TimeoutSeconds,
-        ]);
+        $this->http = new HttpClient('One by Allegro', $this->config->url, [
+            'Accept' => self::ContentType . ', application/pdf, */*',
+            'Accept-Language' => $this->config->language,
+        ], ['timeout' => self::TimeoutSeconds], $httpClient, self::formatErrors(...));
+        $this->tokens = new TokenCache(fn (): AccessToken => AccessToken::fromResponse(
+            $this->requestJson('POST', Method::AuthToken->value, [
+                'username' => $this->config->username,
+                'password' => $this->config->password,
+            ], [], false),
+            'One by Allegro',
+            'accessToken',
+            'expiresIn',
+        ));
     }
 
     /**
@@ -288,76 +297,26 @@ class OneByAllegroApi implements CarrierInterface
      */
     private function requestJson(string $method, string $path, ?array $json = null, array $query = [], bool $auth = true): array
     {
-        $body = $this->request($method, $path, $json, $query, $auth);
-        $data = json_decode($body, true);
-        if (!is_array($data)) {
-            throw new ShippingException('One by Allegro ' . $method . ' ' . $path . ': invalid JSON response');
-        }
-        return $data;
+        return $this->http->decodeJson($this->request($method, $path, $json, $query, $auth), $method, $path);
     }
 
     /**
      * @param array<mixed>|null $json
      * @param array<string, string> $query
+     * @throws HttpStatusException HTTP ≥ 400 (kód v getCode() – OneByAllegroShipmentHandler::waitForLabel)
      */
     private function request(string $method, string $path, ?array $json = null, array $query = [], bool $auth = true): string
     {
-        $headers = [
-            'Accept' => self::ContentType . ', application/pdf, */*',
-            'Accept-Language' => $this->config->language,
-        ];
-        if ($auth) {
-            $headers['Authorization'] = 'Bearer ' . $this->token();
-        }
-
-        $options = ['headers' => $headers];
+        $options = [];
         if ($json !== null) {
-            $options['headers']['Content-Type'] = self::ContentType;
+            $options['headers'] = ['Content-Type' => self::ContentType];
             $options['body'] = json_encode($json, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION);
         }
         if ($query !== []) {
             $options['query'] = $query;
         }
 
-        try {
-            $response = $this->httpClient->request($method, rtrim($this->config->url, '/') . $path, $options);
-        } catch (GuzzleException $e) {
-            throw new ShippingException('One by Allegro ' . $method . ' ' . $path . ' request error: ' . $e->getMessage(), 0, $e);
-        }
-
-        $status = $response->getStatusCode();
-        $body = (string) $response->getBody();
-
-        if ($status >= 200 && $status < 300) {
-            return $body;
-        }
-
-        if ($status === 401 && $auth) {
-            $this->token = null;
-        }
-
-        throw new ShippingException(sprintf('One by Allegro %s %s HTTP %d: %s', $method, $path, $status, self::formatErrors($body)), $status);
-    }
-
-    private function token(): string
-    {
-        if ($this->token !== null && time() < $this->tokenExpiresAt) {
-            return $this->token;
-        }
-
-        $data = $this->requestJson('POST', Method::AuthToken->value, [
-            'username' => $this->config->username,
-            'password' => $this->config->password,
-        ], [], false);
-
-        $token = $data['accessToken'] ?? null;
-        if (!is_string($token) || $token === '') {
-            throw new ShippingException('One by Allegro: token was not created');
-        }
-
-        $expiresIn = $data['expiresIn'] ?? 0;
-        $this->tokenExpiresAt = time() + max(0, (is_int($expiresIn) ? $expiresIn : 0) - self::TokenExpiryMarginSeconds);
-        return $this->token = $token;
+        return $this->http->send($method, $path, $options, $auth ? $this->tokens : null);
     }
 
     private static function formatErrors(string $body): string

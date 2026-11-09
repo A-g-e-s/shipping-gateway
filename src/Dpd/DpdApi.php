@@ -12,8 +12,9 @@ use Ages\ShippingGateway\Dpd\Tracking\DpdParcelStatus;
 use Ages\ShippingGateway\Dpd\Tracking\DpdParcelTracking;
 use Ages\ShippingGateway\Dpd\Values\LabelFormat;
 use Ages\ShippingGateway\Dpd\Values\Method;
-use GuzzleHttp\Client;
-use GuzzleHttp\Exception\GuzzleException;
+use Ages\ShippingGateway\Common\Http\HttpClient;
+use Ages\ShippingGateway\Common\Http\HttpStatusException;
+use GuzzleHttp\ClientInterface;
 
 /**
  * DPD CZ GeoAPI – https://geoapi.dpd.cz/v1/swagger/ (tracking z /v2)
@@ -23,14 +24,13 @@ class DpdApi implements CarrierInterface
     private const int TimeoutSeconds = 60;
     private const int HttpNotFound = 404;
 
-    private Client $httpClient;
+    private readonly HttpClient $http;
 
-    public function __construct(protected readonly DpdConfig $config)
+    public function __construct(protected readonly DpdConfig $config, ?ClientInterface $httpClient = null)
     {
-        $this->httpClient = new Client([
-            'http_errors' => false,
-            'timeout' => self::TimeoutSeconds,
-        ]);
+        $this->http = new HttpClient('DPD', $this->config->url, [
+            'x-api-key' => $this->config->apiKey,
+        ], ['timeout' => self::TimeoutSeconds], $httpClient, self::formatError(...));
     }
 
     /**
@@ -203,43 +203,22 @@ class DpdApi implements CarrierInterface
      */
     private function requestJson(string $method, string $path, ?array $json = null): array
     {
-        $body = $this->request($method, $path, $json);
-        $data = json_decode($body, true);
-        if (!is_array($data)) {
-            throw new ShippingException('DPD ' . $method . ' ' . $path . ': invalid JSON response');
-        }
-        return $data;
+        return $this->http->decodeJson($this->request($method, $path, $json), $method, $path);
     }
 
     /**
      * @param array<mixed>|null $json
+     * @throws HttpStatusException HTTP ≥ 400 (kód v getCode(), getTracking čeká 404)
      */
     private function request(string $method, string $path, ?array $json = null, string $accept = 'application/json'): string
     {
-        $options = [
-            'headers' => [
-                'x-api-key' => $this->config->apiKey,
-                'Accept' => $accept,
-            ],
-        ];
+        $options = ['headers' => ['Accept' => $accept]];
         if ($json !== null) {
             $options['headers']['Content-Type'] = 'application/json';
             $options['body'] = json_encode($json, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
         }
 
-        try {
-            $response = $this->httpClient->request($method, rtrim($this->config->url, '/') . $path, $options);
-        } catch (GuzzleException $e) {
-            throw new ShippingException('DPD ' . $method . ' ' . $path . ' request error: ' . $e->getMessage(), 0, $e);
-        }
-
-        $status = $response->getStatusCode();
-        $body = (string) $response->getBody();
-        if ($status >= 200 && $status < 300) {
-            return $body;
-        }
-
-        throw new ShippingException(sprintf('DPD %s %s HTTP %d: %s', $method, $path, $status, self::formatError($body)), $status);
+        return $this->http->send($method, $path, $options);
     }
 
     private static function formatError(string $body): string

@@ -18,14 +18,15 @@ use Ages\ShippingGateway\Common\Shipment\ShipmentRequest;
 use Ages\ShippingGateway\GebruderWeiss\Config\GebruderWeissConfig;
 use Ages\ShippingGateway\GebruderWeiss\GebruderWeissApi;
 use Ages\ShippingGateway\GebruderWeiss\Label\GebruderWeissLabelGenerator;
+use GuzzleHttp\ClientInterface;
 
 class GebruderWeissShipmentHandler extends GebruderWeissApi implements ShipmentHandlerInterface
 {
     private GebruderWeissLabelGenerator $labelGenerator;
 
-    public function __construct(GebruderWeissConfig $config)
+    public function __construct(GebruderWeissConfig $config, ?ClientInterface $httpClient = null)
     {
-        parent::__construct($config);
+        parent::__construct($config, $httpClient);
         $this->labelGenerator = new GebruderWeissLabelGenerator($config);
     }
 

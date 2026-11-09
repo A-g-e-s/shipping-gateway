@@ -2,7 +2,9 @@
 
 namespace Ages\ShippingGateway\CzechPost;
 
-class CzechPostException extends \Exception
+use Ages\ShippingGateway\Common\ShippingException;
+
+class CzechPostException extends ShippingException
 {
     private mixed $extra = [];
 
