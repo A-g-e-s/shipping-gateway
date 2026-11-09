@@ -14,12 +14,14 @@ enum Carrier: string
     case GebruderWeiss = 'gbw';
     case PersonalCollection = 'collect';
     case SupplierDelivery = 'supplier';
+    case OneByAllegro = 'allegro';
 
     /** @return ParcelType[] */
     public function supportedParcelTypes(): array
     {
         return match ($this) {
             self::Gls, self::Ppl, self::CzechPost, self::PersonalCollection => [ParcelType::Package, ParcelType::PackageOversize],
+            self::OneByAllegro => [ParcelType::Package],
             self::GebruderWeiss, self::SupplierDelivery => ParcelType::cases(),
         };
     }

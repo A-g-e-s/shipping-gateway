@@ -16,6 +16,8 @@ use Ages\ShippingGateway\GebruderWeiss\Config\GebruderWeissConfig;
 use Ages\ShippingGateway\GebruderWeiss\Handler\GebruderWeissShipmentHandler;
 use Ages\ShippingGateway\Gls\Config\GlsConfig;
 use Ages\ShippingGateway\Gls\Handler\GlsShipmentHandler;
+use Ages\ShippingGateway\OneByAllegro\Config\OneByAllegroConfig;
+use Ages\ShippingGateway\OneByAllegro\Handler\OneByAllegroShipmentHandler;
 use Ages\ShippingGateway\PersonalCollection\Config\PersonalCollectionConfig;
 use Ages\ShippingGateway\PersonalCollection\Handler\PersonalCollectionShipmentHandler;
 use Ages\ShippingGateway\Ppl\Config\PplConfig;
@@ -31,6 +33,7 @@ class ShippingGateway
     private ?GebruderWeissShipmentHandler $gwHandler = null;
     private ?PersonalCollectionShipmentHandler $personalCollectionHandler = null;
     private ?SupplierDeliveryShipmentHandler $supplierDeliveryHandler = null;
+    private ?OneByAllegroShipmentHandler $oneByAllegroHandler = null;
 
     public function __construct(
         private readonly ?GlsConfig                  $glsConfig = null,
@@ -39,6 +42,7 @@ class ShippingGateway
         private readonly ?GebruderWeissConfig        $gwConfig = null,
         private readonly ?PersonalCollectionConfig   $personalCollectionConfig = null,
         private readonly ?SupplierDeliveryConfig     $supplierDeliveryConfig = null,
+        private readonly ?OneByAllegroConfig         $oneByAllegroConfig = null,
     )
     {
     }
@@ -56,6 +60,7 @@ class ShippingGateway
                 Carrier::GebruderWeiss      => $this->gwShipmentHandler()->getParcelTracking($consignmentId, $createdAt),
                 Carrier::PersonalCollection => null,
                 Carrier::SupplierDelivery   => null,
+                Carrier::OneByAllegro       => $this->oneByAllegroShipmentHandler()->getParcelTracking($consignmentId),
             };
         } catch (ShippingException $e) {
             throw $e;
@@ -77,6 +82,7 @@ class ShippingGateway
                 Carrier::GebruderWeiss      => $this->gwShipmentHandler()->getTrackingUrl($consignmentId),
                 Carrier::PersonalCollection => '',
                 Carrier::SupplierDelivery   => '',
+                Carrier::OneByAllegro       => $this->oneByAllegroShipmentHandler()->getTrackingUrl($consignmentId),
             };
         } catch (ShippingException $e) {
             throw $e;
@@ -99,6 +105,7 @@ class ShippingGateway
                 Carrier::GebruderWeiss      => $this->gwShipmentHandler(),
                 Carrier::PersonalCollection => $this->personalCollectionShipmentHandler(),
                 Carrier::SupplierDelivery   => $this->supplierDeliveryShipmentHandler(),
+                Carrier::OneByAllegro       => $this->oneByAllegroShipmentHandler(),
             };
             return $handler->createShipment($request);
         } catch (ShippingException $e) {
@@ -177,5 +184,21 @@ class ShippingGateway
     {
         if ($this->supplierDeliveryConfig === null) throw new ConfigException('SupplierDeliveryConfig not configured');
         return $this->supplierDeliveryHandler ??= new SupplierDeliveryShipmentHandler($this->supplierDeliveryConfig);
+    }
+
+    /**
+     * Přímý přístup k One by Allegro API – výdejní místa, svozy (pickups), detail zásilky.
+     *
+     * @throws ConfigException
+     */
+    public function oneByAllegro(): OneByAllegroShipmentHandler
+    {
+        return $this->oneByAllegroShipmentHandler();
+    }
+
+    private function oneByAllegroShipmentHandler(): OneByAllegroShipmentHandler
+    {
+        if ($this->oneByAllegroConfig === null) throw new ConfigException('OneByAllegroConfig not configured');
+        return $this->oneByAllegroHandler ??= new OneByAllegroShipmentHandler($this->oneByAllegroConfig);
     }
 }

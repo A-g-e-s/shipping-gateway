@@ -1,6 +1,6 @@
 # ages/shipping-gateway
 
-Unified PHP library for shipping carrier integrations — **GLS**, **PPL**, **Czech Post**, **Gebrüder Weiss**.  
+Unified PHP library for shipping carrier integrations — **GLS**, **PPL**, **Czech Post**, **Gebrüder Weiss**, **One by Allegro**.  
 Single entry point, config-driven credentials and pickup address, compatible with Nette + Nextras.
 
 ---
@@ -13,6 +13,7 @@ Single entry point, config-driven credentials and pickup address, compatible wit
 | PPL | https://ppl-cpl-api.apidog.io/ |
 | Česká pošta | https://www.postaonline.cz/dokumentaceapi/b2b/ |
 | Gebrüder Weiss | https://developer.my.gw-world.com/#/apis |
+| One by Allegro | https://api.onedelivery.tech/parcels/swagger.html |
 
 ---
 
@@ -108,8 +109,24 @@ services:
         # logoPath: %wwwDir%/img/logo-gw.png   # čtvercové logo na etiketu (volitelné)
     )
 
+    oneByAllegroConfig: Ages\ShippingGateway\OneByAllegro\Config\OneByAllegroConfig(
+        username: USERNAME                 # přístupy ze smlouvy s One by Allegro
+        password: PASSWORD
+        pickupAddress: @pickupAddress      # musí odpovídat svozovému místu nastavenému u One by Allegro
+        # url: https://api.onedelivery.tech.allegrosandbox.pl   # sandbox
+        # labelFormat: Ages\ShippingGateway\OneByAllegro\Values\LabelFormat::PdfA4   # výchozí PdfA6
+        # contentDescription: 'Krmivo pro psy'
+        # defaultLength: 30                # cm, když Parcel nemá dimensions (API rozměry vyžaduje)
+        # defaultWidth: 20
+        # defaultHeight: 15
+    )
+
     - Ages\ShippingGateway\ShippingGateway
 ```
+
+> **One by Allegro** doručuje jen do **CZ a SK**, odesílatel musí být v CZ. Bez `parcelShopCode` jde zásilka kurýrem (`TO_DOOR`),
+> s `parcelShopCode` (= `id` výdejního místa, např. `OXBOX32992`) do One Boxu / One Pointu – typ místa určí API.
+> Telefon se převádí na `+420…` / `+421…`, ulice bez `houseNumber` se rozdělí podle čísla na konci („Hlavní 42/5“ → `Hlavní`, `42/5`).
 
 > **Certifikát České pošty** (`postsignum-bundle.pem`) je třeba umístit ručně do projektu.  
 > Cesta se nastavuje přes `certificatePath` — nikdy se nekopíruje do balíčku.
@@ -170,7 +187,7 @@ foreach ($labels as $label) {
 }
 ```
 
-Dostupné hodnoty `Carrier`: `Carrier::Gls`, `Carrier::Ppl`, `Carrier::CzechPost`, `Carrier::GebruderWeiss`.
+Dostupné hodnoty `Carrier`: `Carrier::Gls`, `Carrier::Ppl`, `Carrier::CzechPost`, `Carrier::GebruderWeiss`, `Carrier::OneByAllegro`.
 
 ---
 
@@ -238,6 +255,10 @@ $tracking = $gateway->tracking($label->carrier, $label->trackingNumber);
 > **Více balíků — GLS / PPL / Czech Post:** API vrátí jeden kombinovaný PDF soubor pro všechny balíky.  
 > Každý `ShipmentLabel` má svůj `trackingNumber`, `labelPdf` je u všech shodné (kombinovaný tisk).
 >
+> **Více balíků — One by Allegro:** jedna zásilka (`shipmentId`) s více balíky; každý `ShipmentLabel` nese `shipmentId`
+> (tracking i veřejné sledování jdou přes něj) a stejné PDF se štítky všech balíků. Pokud se zásilka vytvoří, ale štítek se
+> nepodaří stáhnout, výjimka obsahuje `shipmentId` – štítek lze dotáhnout přes `$gateway->oneByAllegro()->getLabels([$id])`.
+>
 > **Více balíků — Gebrüder Weiss:** každý balík dostane vlastní SSCC kód v etiketě a samostatné PDF etiket.  
 > `ShipmentLabel[]` má tolik prvků, kolik je zásilek — pro tracking mají všechny stejný `trackingNumber` (`reference` / `orderId`), `labelPdf` je u prvního prvku a SSCC zůstává součástí etikety.
 
@@ -286,6 +307,7 @@ $tracking = $gateway->tracking(Carrier::Gls, '1234567890');
 $tracking = $gateway->tracking(Carrier::Ppl, 'KEA12345678');
 $tracking = $gateway->tracking(Carrier::CzechPost, 'DR123456789CZ');
 $tracking = $gateway->tracking(Carrier::GebruderWeiss, 'ORDER-2026-001'); // reference zásilky / orderId
+$tracking = $gateway->tracking(Carrier::OneByAllegro, 'SHIP12345');         // shipmentId
 
 $trackingUrl = $gateway->trackingUrl(Carrier::Gls, '1234567890');
 $trackingUrl = $gateway->trackingUrl(Carrier::Ppl, 'KEA12345678');
@@ -331,6 +353,22 @@ $gateway->pickupPointWidgetKey(Carrier::Gls);           // null — widget klí�
 > Klíč je veřejný (vypisuje se do HTML), nastavuje se jako `widgetApiKey` v `PplConfig`. Chybí-li, metoda vyhodí `ConfigException`.
 
 ---
+
+### One by Allegro — výdejní místa a svozy
+
+```php
+$api = $gateway->oneByAllegro();
+
+$points = $api->getPoints('CZ');           // všechna místa (BOX / PUDO) – id, name, type, status, address, openingHours …
+
+$dates  = $api->getPickupProposals();      // dostupné termíny svozu ['2026-11-10', …]
+$pickup = $api->createPickup([$shipmentId], $dates[0] ?? null); // ['pickupId' => …, 'pickupDate' => DateTimeImmutable]
+$api->deletePickup($pickup['pickupId']);
+
+$detail = $api->getShipment($shipmentId);  // ShipmentDetailResponse
+```
+
+> Stavy zásilky: `DOR` = doručeno, `USZ` / `ZAG` = poškozeno / ztraceno (`damaged`). Číselník: https://api.onedelivery.tech/parcels/statuses.csv
 
 ---
 
@@ -475,6 +513,13 @@ src/
     └── Tracking/
         ├── GbwParcelTracking.php
         └── GbwParcelStatus.php
+└── OneByAllegro/
+    ├── Config/OneByAllegroConfig.php
+    ├── OneByAllegroApi.php           ← auth token, shipments, labels, tracking, points, pickups
+    ├── AddressFormatter.php          ← ulice/číslo, telefon, jména dle validace API
+    ├── Handler/OneByAllegroShipmentHandler.php
+    ├── Tracking/
+    └── Values/
 ```
 
 **Co je v balíčku:** HTTP komunikace, entity, config, unified tracking, unified shipment creation.  
