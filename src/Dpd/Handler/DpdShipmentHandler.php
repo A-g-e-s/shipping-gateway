@@ -6,6 +6,7 @@ namespace Ages\ShippingGateway\Dpd\Handler;
 
 use Ages\ShippingGateway\Common\AddressFormatter;
 use Ages\ShippingGateway\Common\Carrier;
+use Ages\ShippingGateway\Common\Data;
 use Ages\ShippingGateway\Common\Shipment\Parcel;
 use Ages\ShippingGateway\Common\Shipment\RecipientType;
 use Ages\ShippingGateway\Common\Shipment\ShipmentLabel;
@@ -211,15 +212,13 @@ class DpdShipmentHandler extends DpdApi implements ShipmentHandlerInterface
      */
     private function extractParcelNumbers(array $shipments): array
     {
-        $shipment = $shipments[0] ?? null;
-        $parcels = is_array($shipment) ? ($shipment['parcels'] ?? null) : null;
-        if (!is_array($parcels)) {
+        if (!is_array(Data::get($shipments, [0, 'parcels']))) {
             throw new ShippingException('DPD: shipment response does not contain parcels');
         }
 
         $numbers = [];
-        foreach ($parcels as $parcel) {
-            $number = is_array($parcel) && is_array($parcel['parcelNumbers'] ?? null) ? ($parcel['parcelNumbers']['main'] ?? null) : null;
+        foreach (Data::arrays($shipments, [0, 'parcels']) as $parcel) {
+            $number = Data::get($parcel, ['parcelNumbers', 'main']);
             if (is_string($number) || is_int($number)) {
                 $numbers[] = (string) $number;
             }

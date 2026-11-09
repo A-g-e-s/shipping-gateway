@@ -3,13 +3,13 @@
 namespace Ages\ShippingGateway\Gls;
 
 use Ages\ShippingGateway\Common\CarrierInterface;
+use Ages\ShippingGateway\Common\Data;
 use Ages\ShippingGateway\Common\ParcelTrackingInterface;
 use Ages\ShippingGateway\Common\ShippingException;
 use Ages\ShippingGateway\Gls\Config\GlsConfig;
 use Ages\ShippingGateway\Gls\Entity\AddressEntity;
 use Ages\ShippingGateway\Gls\Entity\ParcelEntity;
-use Ages\ShippingGateway\Gls\Entity\ParcelStatus;
-use Ages\ShippingGateway\Gls\Entity\ParcelTracking;
+use Ages\ShippingGateway\Gls\Tracking\GlsTrackingMapper;
 use Ages\ShippingGateway\Gls\Values\Method;
 use Ages\ShippingGateway\Gls\Values\RequestObject;
 use Ages\ShippingGateway\Common\Http\HttpClient;
@@ -66,18 +66,17 @@ class GlsApi implements CarrierInterface
     /**
      * @return array<string, int>
      */
-    protected function prepareParcels(ParcelEntity $parcels): mixed
+    protected function prepareParcels(ParcelEntity $parcels): array
     {
         $request = $this->getRequestPayload([$parcels->toArray()], RequestObject::PrepareLabels);
         $data = json_decode($this->getResponse(Method::PrepareLabels, $request), false);
-        if ($data instanceof \stdClass) {
+        $infoList = Data::objects($data, 'ParcelInfoList');
+        if ($data instanceof \stdClass && Data::array($data, 'PrepareLabelsError') === [] && $infoList !== []) {
             $parcelIdList = [];
-            if (isset($data->PrepareLabelsError) && isset($data->ParcelInfoList) && count($data->PrepareLabelsError) === 0 && count($data->ParcelInfoList) > 0) {
-                foreach ($data->ParcelInfoList as $parcelInfo) {
-                    $parcelIdList[$parcelInfo->ClientReference] = $parcelInfo->ParcelId;
-                }
-                return $parcelIdList;
+            foreach ($infoList as $parcelInfo) {
+                $parcelIdList[Data::string($parcelInfo, 'ClientReference')] = (int) Data::float($parcelInfo, 'ParcelId');
             }
+            return $parcelIdList;
         }
         throw new UnexpectedValueException('Unexpected response');
     }
@@ -91,8 +90,9 @@ class GlsApi implements CarrierInterface
         ];
         $request = $this->getRequestPayload($labelsRequest, RequestObject::PrintedLabels);
         $data = json_decode($this->getResponse(Method::PrintedLabels, $request));
-        if ($data instanceof \stdClass && isset($data->Labels)) {
-            return implode(array_map('chr', $data->Labels));
+        $bytes = array_filter(Data::array($data, 'Labels'), 'is_int');
+        if ($bytes !== []) {
+            return implode(array_map(chr(...), $bytes));
         }
         throw new UnexpectedValueException('Unexpected response');
     }
@@ -112,90 +112,30 @@ class GlsApi implements CarrierInterface
         throw new UnexpectedValueException('Unexpected response');
     }
 
-    public function getParcelTracking(string $consignmentId): ?ParcelTrackingInterface
+    public function getParcelTracking(string $consignmentId, ?\DateTimeInterface $createdAt = null): ?ParcelTrackingInterface
     {
         $tracking = $this->parcelStatuses($consignmentId);
-        $statusErrors = $this->readObjectListProperty($tracking, 'GetParcelStatusErrors');
+        $statusErrors = Data::objects($tracking, 'GetParcelStatusErrors');
         if ($statusErrors !== []) {
-            $errors = implode(', ', array_map(
-                static fn(\stdClass $error): string => sprintf(
-                    '%s (%s)',
-                    self::readScalarProperty($error, 'ErrorCode', 'unknown'),
-                    self::readScalarProperty($error, 'ErrorDescription', 'unknown error'),
-                ),
-                $statusErrors,
-            ));
-            throw new ShippingException('GLS: ' . $errors);
+            throw new ShippingException('GLS: ' . self::formatErrors($statusErrors));
         }
 
-        $parcelNumber = self::readScalarProperty($tracking, 'ParcelNumber', $consignmentId);
-        if ($parcelNumber === '') {
-            return null;
-        }
-
-        $parcelTracking = ParcelTracking::of(
-            self::readScalarProperty($tracking, 'DeliveryCountryCode'),
-            self::readScalarProperty($tracking, 'DeliveryZipCode'),
-            $parcelNumber,
-            self::readScalarProperty($tracking, 'ClientReference'),
-            self::readFloatProperty($tracking, 'Weight'),
-        );
-
-        foreach ($this->readObjectListProperty($tracking, 'ParcelStatusList') as $statusLine) {
-            $statusCode = self::readScalarProperty($statusLine, 'StatusCode');
-            $statusDate = self::readScalarProperty($statusLine, 'StatusDate');
-            $statusDescription = self::readScalarProperty($statusLine, 'StatusDescription');
-
-            if ($statusCode === '' && $statusDate === '' && $statusDescription === '') {
-                continue;
-            }
-
-            $parcelTracking->addStatus(ParcelStatus::of(
-                self::readScalarProperty($statusLine, 'DepotCity'),
-                self::readScalarProperty($statusLine, 'DepotNumber'),
-                $statusCode,
-                $statusDate,
-                $statusDescription,
-                self::readScalarProperty($statusLine, 'StatusInfo'),
-            ));
-        }
-
-        return $parcelTracking;
-    }
-
-    private static function readScalarProperty(\stdClass $source, string $property, string $default = ''): string
-    {
-        $value = $source->{$property} ?? null;
-
-        if (is_string($value) || is_int($value) || is_float($value) || is_bool($value)) {
-            return (string) $value;
-        }
-
-        return $default;
-    }
-
-    private static function readFloatProperty(\stdClass $source, string $property, float $default = 0.0): float
-    {
-        $value = $source->{$property} ?? null;
-
-        if (is_int($value) || is_float($value) || (is_string($value) && is_numeric($value))) {
-            return (float) $value;
-        }
-
-        return $default;
+        return GlsTrackingMapper::tracking($tracking, $consignmentId);
     }
 
     /**
-     * @return \stdClass[]
+     * @param \stdClass[] $errors GetParcelStatusErrors / PrintLabelsErrorList
      */
-    private function readObjectListProperty(\stdClass $source, string $property): array
+    protected static function formatErrors(array $errors): string
     {
-        $value = $source->{$property} ?? null;
-        if (!is_array($value)) {
-            return [];
-        }
-
-        return array_values(array_filter($value, static fn(mixed $item): bool => $item instanceof \stdClass));
+        return implode(', ', array_map(
+            static fn(\stdClass $error): string => sprintf(
+                '%s (%s)',
+                Data::string($error, 'ErrorCode', 'unknown'),
+                Data::string($error, 'ErrorDescription', 'unknown error'),
+            ),
+            $errors,
+        ));
     }
 
     public function getTrackingUrl(string $consignmentId): string

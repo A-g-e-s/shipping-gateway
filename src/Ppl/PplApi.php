@@ -8,10 +8,8 @@ use Ages\ShippingGateway\Common\ShippingException;
 use Ages\ShippingGateway\Ppl\Config\PplConfig;
 use Ages\ShippingGateway\Ppl\Entity\AddressEntity;
 use Ages\ShippingGateway\Ppl\Entity\ParcelEntity;
-use Ages\ShippingGateway\Ppl\Entity\ParcelStatus;
-use Ages\ShippingGateway\Ppl\Entity\ParcelTracking;
 use Ages\ShippingGateway\Ppl\Values\Method;
-use Ages\ShippingGateway\Ppl\Values\ShipmentState;
+use Ages\ShippingGateway\Ppl\Tracking\PplTrackingMapper;
 use Ages\ShippingGateway\Common\Http\AccessToken;
 use Ages\ShippingGateway\Common\Http\HttpClient;
 use Ages\ShippingGateway\Common\Http\HttpStatusException;
@@ -169,57 +167,15 @@ class PplApi implements CarrierInterface
         return null;
     }
 
-    public function getParcelTracking(string $consignmentId): ?ParcelTrackingInterface
+    public function getParcelTracking(string $consignmentId, ?\DateTimeInterface $createdAt = null): ?ParcelTrackingInterface
     {
         $tracking = $this->getTracking($consignmentId);
-        if (!$tracking instanceof \stdClass) {
-            return null;
-        }
-
-        $delivered = $this->isDelivered($tracking->shipmentState);
-        $deliveredDate = null;
-        if ($delivered) {
-            $string = $tracking->deliveryFeature?->delivDate;
-            if (is_string($string)) {
-                $deliveredDate = new \DateTimeImmutable($string);
-            }
-        }
-
-        $entity = ParcelTracking::of(
-            $delivered,
-            $deliveredDate,
-            $tracking->shipmentWeightInfo->weight ?? 0,
-            $tracking->recipient->country ?? '',
-            $tracking->recipient->zipCode ?? '',
-            $tracking->shipmentNumber ?? '',
-            $tracking->externalNumbers[0]->externalNumber ?? '',
-        );
-
-        if (!empty($tracking->trackAndTrace->events) && is_array($tracking->trackAndTrace->events)) {
-            foreach (array_reverse($tracking->trackAndTrace->events) as $event) {
-                $entity->addStatus(ParcelStatus::of(
-                    '',
-                    $tracking->depot ?? '',
-                    $event->code ?? '',
-                    $event->eventDate ?? '',
-                    $event->name ?? '',
-                    '',
-                ));
-            }
-        }
-
-        return $entity;
+        return $tracking !== null ? PplTrackingMapper::tracking($tracking) : null;
     }
 
     public function getTrackingUrl(string $consignmentId): string
     {
         return self::TrackUrl . rawurlencode($consignmentId);
-    }
-
-    private function isDelivered(string $states): bool
-    {
-        $values = array_map('trim', explode(',', $states));
-        return in_array(ShipmentState::Delivered->name, $values, true);
     }
 
     /**

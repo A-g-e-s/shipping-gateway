@@ -5,12 +5,12 @@ declare(strict_types=1);
 namespace Ages\ShippingGateway\GebruderWeiss;
 
 use Ages\ShippingGateway\Common\CarrierInterface;
+use Ages\ShippingGateway\Common\Data;
 use Ages\ShippingGateway\Common\ParcelTrackingInterface;
 use Ages\ShippingGateway\Common\ShipmentAlreadyExistsException;
 use Ages\ShippingGateway\Common\ShippingException;
 use Ages\ShippingGateway\GebruderWeiss\Config\GebruderWeissConfig;
-use Ages\ShippingGateway\GebruderWeiss\Tracking\GbwParcelStatus;
-use Ages\ShippingGateway\GebruderWeiss\Tracking\GbwParcelTracking;
+use Ages\ShippingGateway\GebruderWeiss\Tracking\GebruderWeissTrackingMapper;
 use Ages\ShippingGateway\GebruderWeiss\Values\Method;
 use Ages\ShippingGateway\GebruderWeiss\Values\TokenScope;
 use Ages\ShippingGateway\Common\Http\AccessToken;
@@ -89,7 +89,7 @@ class GebruderWeissApi implements CarrierInterface
             'pageSize' => 20,
         ], TokenScope::OrdersStatus);
 
-        return $data !== null ? $this->parseTrackingResponse($consignmentId, $data) : null;
+        return $data !== null ? GebruderWeissTrackingMapper::tracking($consignmentId, $data) : null;
     }
 
     private function resolveInternalOrderId(string $referenceNumber, ?\DateTimeInterface $createdAt): ?string
@@ -147,19 +147,7 @@ class GebruderWeissApi implements CarrierInterface
      */
     private function extractOrderId(array $data): ?string
     {
-        $list = $data['orderStatusList'] ?? null;
-        if (!is_array($list) || !isset($list[0])) {
-            return null;
-        }
-
-        $first = $list[0];
-        $referenced = is_array($first) ? ($first['orderReferenced'] ?? null) : null;
-        $orderId = is_array($referenced) ? ($referenced['orderId'] ?? null) : null;
-        if (is_string($orderId) && $orderId !== '') {
-            return $orderId;
-        }
-
-        return null;
+        return Data::nonEmptyString($data, ['orderStatusList', 0, 'orderReferenced', 'orderId']);
     }
 
     public function getPackageTracking(string $barcode): ?ParcelTrackingInterface
@@ -169,7 +157,7 @@ class GebruderWeissApi implements CarrierInterface
             'pageSize'   => 20,
         ], TokenScope::PackagesStatus);
 
-        return $data !== null ? $this->parseTrackingResponse($barcode, $data) : null;
+        return $data !== null ? GebruderWeissTrackingMapper::tracking($barcode, $data) : null;
     }
 
     public function getTrackingUrl(string $consignmentId): string
@@ -180,43 +168,5 @@ class GebruderWeissApi implements CarrierInterface
         }
 
         return self::TrackUrl . rawurlencode($city) . '/' . rawurlencode($consignmentId);
-    }
-
-    /**
-     * @param array<mixed> $data
-     */
-    private function parseTrackingResponse(string $barcode, array $data): GbwParcelTracking
-    {
-        $tracking = GbwParcelTracking::of($barcode);
-
-        $statusHistory = $data['statusHistory'] ?? null;
-        if (is_array($statusHistory)) {
-            $this->appendTrackingEvents($tracking, $statusHistory);
-        }
-
-        if ($tracking->parcelStatuses === []) {
-            $statusCurrent = $data['statusCurrent'] ?? null;
-            if (is_array($statusCurrent)) {
-                $tracking->addStatus(GbwParcelStatus::of($statusCurrent));
-            }
-        }
-
-        if ($tracking->parcelStatuses === []) {
-            $this->appendTrackingEvents($tracking, $data);
-        }
-
-        return $tracking;
-    }
-
-    /**
-     * @param array<int|string, mixed> $events
-     */
-    private function appendTrackingEvents(GbwParcelTracking $tracking, array $events): void
-    {
-        foreach ($events as $event) {
-            if (is_array($event) && isset($event['eventCode'], $event['eventDateTime'])) {
-                $tracking->addStatus(GbwParcelStatus::of($event));
-            }
-        }
     }
 }

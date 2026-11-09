@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Ages\ShippingGateway\Ppl\Handler;
 
 use Ages\ShippingGateway\Common\Carrier;
+use Ages\ShippingGateway\Common\Data;
+use Ages\ShippingGateway\Common\Label\PdfMerger;
 use Ages\ShippingGateway\Common\ShipmentHandlerInterface;
 use Ages\ShippingGateway\Common\Shipment\ShipmentLabel;
 use Ages\ShippingGateway\Common\Shipment\ShipmentRequest;
@@ -15,7 +17,6 @@ use Ages\ShippingGateway\Ppl\Entity\ParcelEntity;
 use Ages\ShippingGateway\Ppl\Entity\SpecificDeliveryEntity;
 use Ages\ShippingGateway\Ppl\PplApi;
 use Ages\ShippingGateway\Ppl\Values\Product;
-use Mpdf\Mpdf;
 
 class PplShipmentHandler extends PplApi implements ShipmentHandlerInterface
 {
@@ -122,147 +123,76 @@ class PplShipmentHandler extends PplApi implements ShipmentHandlerInterface
      */
     private function extractTrackingNumbers(\stdClass $status, string $fallbackRef): array
     {
-        if (!isset($status->items) || !is_array($status->items) || $status->items === []) {
+        $items = $this->collectShipmentItems(Data::objects($status, 'items'));
+        if ($items === []) {
             throw new ShippingException('PPL: batch response does not contain any shipments');
         }
 
-        $trackingNumbers = [];
-        foreach ($this->collectShipmentItems($status->items) as $item) {
-            $trackingNumbers[] = (string) ($item->shipmentNumber ?? $fallbackRef);
-        }
-
-        if ($trackingNumbers === []) {
-            throw new ShippingException('PPL: shipment numbers not found in batch response');
-        }
-
-        return $trackingNumbers;
+        return array_map(static fn (\stdClass $item): string => Data::string($item, 'shipmentNumber', $fallbackRef), $items);
     }
 
     private function extractLabelPdf(\stdClass $status): string
     {
-        $labelPdfs = [];
-        foreach ($this->extractLabelUrls($status) as $labelUrl) {
-            $labelPdfs[] = $this->waitForLabel($labelUrl);
-        }
-
+        $labelPdfs = array_map($this->waitForLabel(...), $this->extractLabelUrls($status));
         if ($labelPdfs === []) {
             throw new ShippingException('PPL: label URL not found in batch response');
         }
 
-        if (count($labelPdfs) === 1) {
-            return $labelPdfs[0];
-        }
-
-        return $this->mergeLabelPdfs($labelPdfs);
+        return PdfMerger::merge($labelPdfs);
     }
 
     /**
-     * @param array<int, \stdClass> $items
-     * @return array<int, \stdClass>
+     * Zásilky dávky včetně souvisejících (relatedItems – další kusy vícekusové sady).
+     *
+     * @param \stdClass[] $items
+     * @return \stdClass[]
      */
     private function collectShipmentItems(array $items): array
     {
         $collected = [];
-
         foreach ($items as $item) {
-            if (!$item instanceof \stdClass) {
-                continue;
-            }
-
             $collected[] = $item;
-
-            if (isset($item->relatedItems) && is_array($item->relatedItems)) {
-                array_push($collected, ...$this->collectShipmentItems($item->relatedItems));
-            }
+            array_push($collected, ...$this->collectShipmentItems(Data::objects($item, 'relatedItems')));
         }
-
         return $collected;
     }
 
     /**
+     * Štítky jednotlivých zásilek; když chybí, štítek celé dávky (completeLabel).
+     *
      * @return string[]
      */
     private function extractLabelUrls(\stdClass $status): array
     {
-        if (!isset($status->items) || !is_array($status->items) || $status->items === []) {
-            return [];
-        }
-
         $urls = [];
-        foreach ($this->collectShipmentItems($status->items) as $item) {
-            if (isset($item->labelUrl) && is_string($item->labelUrl) && $item->labelUrl !== '') {
-                $urls[] = $item->labelUrl;
+        foreach ($this->collectShipmentItems(Data::objects($status, 'items')) as $item) {
+            $url = Data::nonEmptyString($item, 'labelUrl');
+            if ($url !== null) {
+                $urls[] = $url;
             }
         }
 
-        if ($urls === [] && isset($status->completeLabel?->labelUrls) && is_array($status->completeLabel->labelUrls)) {
-            foreach ($status->completeLabel->labelUrls as $labelUrl) {
-                if (is_string($labelUrl) && $labelUrl !== '') {
-                    $urls[] = $labelUrl;
-                }
-            }
+        if ($urls === []) {
+            $urls = array_filter(Data::array($status, ['completeLabel', 'labelUrls']), static fn (mixed $url): bool => is_string($url) && $url !== '');
         }
 
         return array_values(array_unique($urls));
     }
 
+    /**
+     * Štítek bývá chvíli po dokončení dávky ještě nepřipravený (404) – zkouší se znovu, jiná chyba končí hned.
+     */
     private function waitForLabel(string $labelUrl): string
     {
-        $lastException = null;
-
-        for ($i = 0; $i < self::LabelPollAttempts; $i++) {
+        for ($attempt = 1; ; $attempt++) {
             try {
                 return $this->getLabel($labelUrl);
             } catch (ShippingException $e) {
-                $lastException = $e;
-                if ($e->getCode() !== 404) {
+                if ($e->getCode() !== 404 || $attempt >= self::LabelPollAttempts) {
                     throw $e;
                 }
             }
-
             usleep(self::PollDelayMicroseconds);
-        }
-
-        if ($lastException instanceof ShippingException) {
-            throw $lastException;
-        }
-
-        throw new ShippingException('PPL: label timeout for URL ' . $labelUrl);
-    }
-
-    /**
-     * @param string[] $labelPdfs
-     */
-    private function mergeLabelPdfs(array $labelPdfs): string
-    {
-        $pdf = new Mpdf();
-        $temporaryFiles = [];
-
-        try {
-            foreach ($labelPdfs as $labelPdf) {
-                $temporaryFile = tempnam(sys_get_temp_dir(), 'ppl_');
-                if ($temporaryFile === false) {
-                    throw new ShippingException('PPL: failed to create temporary file for label merge');
-                }
-
-                file_put_contents($temporaryFile, $labelPdf);
-                $temporaryFiles[] = $temporaryFile;
-
-                $pageCount = $pdf->setSourceFile($temporaryFile);
-                for ($page = 1; $page <= $pageCount; $page++) {
-                    $template = $pdf->importPage($page);
-                    $pdf->AddPage();
-                    $pdf->useTemplate($template, 0, 0, null, null, true);
-                }
-            }
-
-            return $pdf->Output('', 'S');
-        } finally {
-            foreach ($temporaryFiles as $temporaryFile) {
-                if (is_file($temporaryFile)) {
-                    @unlink($temporaryFile);
-                }
-            }
         }
     }
 

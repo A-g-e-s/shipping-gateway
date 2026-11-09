@@ -3,12 +3,15 @@
 namespace Ages\ShippingGateway;
 
 use Ages\ShippingGateway\Common\Carrier;
+use Ages\ShippingGateway\Common\CarrierRegistry;
+use Ages\ShippingGateway\Common\ImportHandlerInterface;
 use Ages\ShippingGateway\Common\ParcelTrackingInterface;
 use Ages\ShippingGateway\Common\Shipment\ImportRequest;
 use Ages\ShippingGateway\Common\Shipment\ShipmentLabel;
 use Ages\ShippingGateway\Common\Shipment\ShipmentRequest;
 use Ages\ShippingGateway\Common\ConfigException;
 use Ages\ShippingGateway\Common\ShipmentAlreadyExistsException;
+use Ages\ShippingGateway\Common\ShipmentHandlerInterface;
 use Ages\ShippingGateway\Common\ShippingException;
 use Ages\ShippingGateway\CzechPost\Config\CzechPostConfig;
 use Ages\ShippingGateway\CzechPost\Handler\CzechPostShipmentHandler;
@@ -30,62 +33,77 @@ use GuzzleHttp\ClientInterface;
 
 class ShippingGateway
 {
-    private ?GlsShipmentHandler $glsHandler = null;
-    private ?PplShipmentHandler $pplHandler = null;
-    private ?CzechPostShipmentHandler $czechPostHandler = null;
-    private ?GebruderWeissShipmentHandler $gwHandler = null;
-    private ?PersonalCollectionShipmentHandler $personalCollectionHandler = null;
-    private ?SupplierDeliveryShipmentHandler $supplierDeliveryHandler = null;
-    private ?OneByAllegroShipmentHandler $oneByAllegroHandler = null;
-    private ?DpdShipmentHandler $dpdHandler = null;
-    private ?ClientInterface $httpClient = null;
+    private readonly CarrierRegistry $carriers;
 
+    /**
+     * Pojmenované configy kvůli neonu (ShippingGateway(gwConfig: @gwConfig)); dopravce bez configu
+     * je registrovaný, ale volání na něj hodí ConfigException.
+     */
     public function __construct(
-        private readonly ?GlsConfig                  $glsConfig = null,
-        private readonly ?PplConfig                  $pplConfig = null,
-        private readonly ?CzechPostConfig            $czechPostConfig = null,
-        private readonly ?GebruderWeissConfig        $gwConfig = null,
-        private readonly ?PersonalCollectionConfig   $personalCollectionConfig = null,
-        private readonly ?SupplierDeliveryConfig     $supplierDeliveryConfig = null,
-        private readonly ?OneByAllegroConfig         $oneByAllegroConfig = null,
-        private readonly ?DpdConfig                  $dpdConfig = null,
+        ?GlsConfig                $glsConfig = null,
+        private readonly ?PplConfig $pplConfig = null,
+        ?CzechPostConfig          $czechPostConfig = null,
+        ?GebruderWeissConfig      $gwConfig = null,
+        ?PersonalCollectionConfig $personalCollectionConfig = null,
+        ?SupplierDeliveryConfig   $supplierDeliveryConfig = null,
+        ?OneByAllegroConfig       $oneByAllegroConfig = null,
+        ?DpdConfig                $dpdConfig = null,
     )
     {
+        // Jediné místo registrace dopravců: Carrier → config → handler (vytvoří se až při prvním použití).
+        $c = $this->carriers = new CarrierRegistry();
+        $c->register(Carrier::Gls, $glsConfig, 'GlsConfig',
+            static fn (GlsConfig $config, ?ClientInterface $http) => new GlsShipmentHandler($config, $http));
+        $c->register(Carrier::Ppl, $pplConfig, 'PplConfig',
+            static fn (PplConfig $config, ?ClientInterface $http) => new PplShipmentHandler($config, $http));
+        $c->register(Carrier::CzechPost, $czechPostConfig, 'CzechPostConfig',
+            static fn (CzechPostConfig $config, ?ClientInterface $http) => new CzechPostShipmentHandler($config, $http));
+        $c->register(Carrier::GebruderWeiss, $gwConfig, 'GebruderWeissConfig',
+            static fn (GebruderWeissConfig $config, ?ClientInterface $http) => new GebruderWeissShipmentHandler($config, $http));
+        $c->register(Carrier::PersonalCollection, $personalCollectionConfig, 'PersonalCollectionConfig',
+            static fn (PersonalCollectionConfig $config) => new PersonalCollectionShipmentHandler($config));
+        $c->register(Carrier::SupplierDelivery, $supplierDeliveryConfig, 'SupplierDeliveryConfig',
+            static fn (SupplierDeliveryConfig $config) => new SupplierDeliveryShipmentHandler($config));
+        $c->register(Carrier::OneByAllegro, $oneByAllegroConfig, 'OneByAllegroConfig',
+            static fn (OneByAllegroConfig $config, ?ClientInterface $http) => new OneByAllegroShipmentHandler($config, $http));
+        $c->register(Carrier::Dpd, $dpdConfig, 'DpdConfig',
+            static fn (DpdConfig $config, ?ClientInterface $http) => new DpdShipmentHandler($config, $http));
     }
 
     /**
      * Vlastní Guzzle klient pro všechny dopravce (testy s MockHandler, proxy, logování).
-     * Nastavit před prvním voláním dopravce – už vytvořené handlery si drží původního klienta.
+     * Nastavit před prvním voláním dopravce – už vytvořené handlery se zahodí, ale reference na ně
+     * (oneByAllegro(), dpd()) si drží původního klienta.
      * Timeouty a http_errors nastavuje společná vrstva Common\Http\HttpClient u každého požadavku.
      */
     public function setHttpClient(?ClientInterface $httpClient): void
     {
-        $this->httpClient = $httpClient;
-        $this->glsHandler = $this->pplHandler = $this->czechPostHandler = $this->gwHandler = null;
-        $this->oneByAllegroHandler = $this->dpdHandler = null;
+        $this->carriers->setHttpClient($httpClient);
     }
 
     /**
+     * Handler dopravce (např. pro funkce mimo společné API). Hodí ConfigException, když dopravce nemá config.
+     *
+     * @throws ConfigException
+     */
+    public function handler(Carrier $carrier): ShipmentHandlerInterface
+    {
+        return $this->carriers->get($carrier);
+    }
+
+    public function isConfigured(Carrier $carrier): bool
+    {
+        return $this->carriers->isConfigured($carrier);
+    }
+
+    /**
+     * @param \DateTimeInterface|null $createdAt datum založení zásilky (Gebrüder Weiss podle něj hledá referenci)
+     * @return ParcelTrackingInterface|null null = dopravce zásilku nezná nebo tracking nemá (osobní odběr, dodavatel)
      * @throws ShippingException
      */
     public function tracking(Carrier $carrier, string $consignmentId, ?\DateTimeInterface $createdAt = null): ?ParcelTrackingInterface
     {
-        try {
-            return match ($carrier) {
-                Carrier::Gls                => $this->glsShipmentHandler()->getParcelTracking($consignmentId),
-                Carrier::Ppl                => $this->pplShipmentHandler()->getParcelTracking($consignmentId),
-                Carrier::CzechPost          => $this->czechPostShipmentHandler()->getParcelTracking($consignmentId),
-                Carrier::GebruderWeiss      => $this->gwShipmentHandler()->getParcelTracking($consignmentId, $createdAt),
-                Carrier::PersonalCollection => null,
-                Carrier::SupplierDelivery   => null,
-                Carrier::OneByAllegro       => $this->oneByAllegroShipmentHandler()->getParcelTracking($consignmentId),
-                Carrier::Dpd                => $this->dpdShipmentHandler()->getParcelTracking($consignmentId),
-            };
-        } catch (ShippingException $e) {
-            throw $e;
-        } catch (\Throwable $e) {
-            throw new ShippingException($e->getMessage(), 0, $e);
-        }
+        return $this->call(fn () => $this->carriers->get($carrier)->getParcelTracking($consignmentId, $createdAt));
     }
 
     /**
@@ -93,22 +111,7 @@ class ShippingGateway
      */
     public function trackingUrl(Carrier $carrier, string $consignmentId): string
     {
-        try {
-            return match ($carrier) {
-                Carrier::Gls                => $this->glsShipmentHandler()->getTrackingUrl($consignmentId),
-                Carrier::Ppl                => $this->pplShipmentHandler()->getTrackingUrl($consignmentId),
-                Carrier::CzechPost          => $this->czechPostShipmentHandler()->getTrackingUrl($consignmentId),
-                Carrier::GebruderWeiss      => $this->gwShipmentHandler()->getTrackingUrl($consignmentId),
-                Carrier::PersonalCollection => '',
-                Carrier::SupplierDelivery   => '',
-                Carrier::OneByAllegro       => $this->oneByAllegroShipmentHandler()->getTrackingUrl($consignmentId),
-                Carrier::Dpd                => $this->dpdShipmentHandler()->getTrackingUrl($consignmentId),
-            };
-        } catch (ShippingException $e) {
-            throw $e;
-        } catch (\Throwable $e) {
-            throw new ShippingException($e->getMessage(), 0, $e);
-        }
+        return $this->call(fn () => $this->carriers->get($carrier)->getTrackingUrl($consignmentId));
     }
 
     /**
@@ -117,27 +120,11 @@ class ShippingGateway
      */
     public function createShipment(Carrier $carrier, ShipmentRequest $request): array
     {
-        try {
-            $handler = match ($carrier) {
-                Carrier::Gls                => $this->glsShipmentHandler(),
-                Carrier::Ppl                => $this->pplShipmentHandler(),
-                Carrier::CzechPost          => $this->czechPostShipmentHandler(),
-                Carrier::GebruderWeiss      => $this->gwShipmentHandler(),
-                Carrier::PersonalCollection => $this->personalCollectionShipmentHandler(),
-                Carrier::SupplierDelivery   => $this->supplierDeliveryShipmentHandler(),
-                Carrier::OneByAllegro       => $this->oneByAllegroShipmentHandler(),
-                Carrier::Dpd                => $this->dpdShipmentHandler(),
-            };
-            return $handler->createShipment($request);
-        } catch (ShippingException $e) {
-            throw $e;
-        } catch (\Throwable $e) {
-            throw new ShippingException($e->getMessage(), 0, $e);
-        }
+        return $this->call(fn () => $this->carriers->get($carrier)->createShipment($request));
     }
 
     /**
-     * Objedná svoz od dodavatele na pickupAddress dopravce. Podporuje jen Gebrüder Weiss.
+     * Objedná svoz od dodavatele na pickupAddress dopravce (handler s ImportHandlerInterface – Gebrüder Weiss).
      * Vrací štítky (PDF u prvního balíku), které dodavatel nalepí na zboží před vyzvednutím.
      *
      * @return ShipmentLabel[]
@@ -146,16 +133,13 @@ class ShippingGateway
      */
     public function createImport(Carrier $carrier, ImportRequest $request): array
     {
-        try {
-            return match ($carrier) {
-                Carrier::GebruderWeiss => $this->gwShipmentHandler()->createImport($request),
-                default                => throw new ShippingException('Import is not supported for carrier ' . $carrier->name),
-            };
-        } catch (ShippingException $e) {
-            throw $e;
-        } catch (\Throwable $e) {
-            throw new ShippingException($e->getMessage(), 0, $e);
-        }
+        return $this->call(function () use ($carrier, $request): array {
+            $handler = $this->carriers->get($carrier);
+            if (!$handler instanceof ImportHandlerInterface) {
+                throw new ShippingException('Import is not supported for carrier ' . $carrier->name);
+            }
+            return $handler->createImport($request);
+        });
     }
 
     /**
@@ -171,42 +155,6 @@ class ShippingGateway
         };
     }
 
-    private function glsShipmentHandler(): GlsShipmentHandler
-    {
-        if ($this->glsConfig === null) throw new ConfigException('GlsConfig not configured');
-        return $this->glsHandler ??= new GlsShipmentHandler($this->glsConfig, $this->httpClient);
-    }
-
-    private function pplShipmentHandler(): PplShipmentHandler
-    {
-        if ($this->pplConfig === null) throw new ConfigException('PplConfig not configured');
-        return $this->pplHandler ??= new PplShipmentHandler($this->pplConfig, $this->httpClient);
-    }
-
-    private function czechPostShipmentHandler(): CzechPostShipmentHandler
-    {
-        if ($this->czechPostConfig === null) throw new ConfigException('CzechPostConfig not configured');
-        return $this->czechPostHandler ??= new CzechPostShipmentHandler($this->czechPostConfig, $this->httpClient);
-    }
-
-    private function gwShipmentHandler(): GebruderWeissShipmentHandler
-    {
-        if ($this->gwConfig === null) throw new ConfigException('GebruderWeissConfig not configured');
-        return $this->gwHandler ??= new GebruderWeissShipmentHandler($this->gwConfig, $this->httpClient);
-    }
-
-    private function personalCollectionShipmentHandler(): PersonalCollectionShipmentHandler
-    {
-        if ($this->personalCollectionConfig === null) throw new ConfigException('PersonalCollectionConfig not configured');
-        return $this->personalCollectionHandler ??= new PersonalCollectionShipmentHandler($this->personalCollectionConfig);
-    }
-
-    private function supplierDeliveryShipmentHandler(): SupplierDeliveryShipmentHandler
-    {
-        if ($this->supplierDeliveryConfig === null) throw new ConfigException('SupplierDeliveryConfig not configured');
-        return $this->supplierDeliveryHandler ??= new SupplierDeliveryShipmentHandler($this->supplierDeliveryConfig);
-    }
-
     /**
      * Přímý přístup k One by Allegro API – výdejní místa, svozy (pickups), detail zásilky.
      *
@@ -214,13 +162,7 @@ class ShippingGateway
      */
     public function oneByAllegro(): OneByAllegroShipmentHandler
     {
-        return $this->oneByAllegroShipmentHandler();
-    }
-
-    private function oneByAllegroShipmentHandler(): OneByAllegroShipmentHandler
-    {
-        if ($this->oneByAllegroConfig === null) throw new ConfigException('OneByAllegroConfig not configured');
-        return $this->oneByAllegroHandler ??= new OneByAllegroShipmentHandler($this->oneByAllegroConfig, $this->httpClient);
+        return $this->carriers->getAs(Carrier::OneByAllegro, OneByAllegroShipmentHandler::class);
     }
 
     /**
@@ -230,12 +172,25 @@ class ShippingGateway
      */
     public function dpd(): DpdShipmentHandler
     {
-        return $this->dpdShipmentHandler();
+        return $this->carriers->getAs(Carrier::Dpd, DpdShipmentHandler::class);
     }
 
-    private function dpdShipmentHandler(): DpdShipmentHandler
+    /**
+     * Chyby mimo ShippingException (Guzzle, TypeError, InvalidArgument…) zabalí do ShippingException.
+     *
+     * @template T
+     * @param \Closure(): T $operation
+     * @return T
+     * @throws ShippingException
+     */
+    private function call(\Closure $operation): mixed
     {
-        if ($this->dpdConfig === null) throw new ConfigException('DpdConfig not configured');
-        return $this->dpdHandler ??= new DpdShipmentHandler($this->dpdConfig, $this->httpClient);
+        try {
+            return $operation();
+        } catch (ShippingException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            throw new ShippingException($e->getMessage(), 0, $e);
+        }
     }
 }

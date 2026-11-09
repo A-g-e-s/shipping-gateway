@@ -6,6 +6,7 @@ namespace Ages\ShippingGateway\CzechPost\Handler;
 
 use Ages\ShippingGateway\Common\Shipment\RecipientType;
 use Ages\ShippingGateway\Common\Carrier;
+use Ages\ShippingGateway\Common\Data;
 use Ages\ShippingGateway\Common\ShipmentHandlerInterface;
 use Ages\ShippingGateway\Common\Shipment\Parcel;
 use Ages\ShippingGateway\Common\Shipment\ParcelType;
@@ -180,9 +181,9 @@ class CzechPostShipmentHandler extends CzechPostApi implements ShipmentHandlerIn
             throw new CzechPostException('Czech Post: missing responseHeader');
         }
 
-        $responseCode = $header['resultHeader']['responseCode'] ?? null;
+        $responseCode = Data::get($header, ['resultHeader', 'responseCode']);
         if ($responseCode !== 1) {
-            $code = (int) $responseCode;
+            $code = is_numeric($responseCode) ? (int) $responseCode : 0;
             $msg = $responseCode === null
                 ? 'responseCode null'
                 : ErrorCodes::getErrorMsg($code);
@@ -193,7 +194,7 @@ class CzechPostShipmentHandler extends CzechPostApi implements ShipmentHandlerIn
             throw new CzechPostException('Czech Post: ' . $msg, $code, $header);
         }
 
-        $labelPdf = base64_decode((string) ($header['responsePrintParams']['file'] ?? ''), true);
+        $labelPdf = base64_decode(Data::string($header, ['responsePrintParams', 'file']), true);
         if (!is_string($labelPdf) || $labelPdf === '') {
             throw new CzechPostException('Czech Post: invalid label PDF in response');
         }
@@ -205,7 +206,7 @@ class CzechPostShipmentHandler extends CzechPostApi implements ShipmentHandlerIn
 
         $labels = [];
         foreach ($parcelData as $package) {
-            $trackingNumber = (string) ($package['parcelCode'] ?? $package['recordNumber'] ?? '');
+            $trackingNumber = Data::string($package, 'parcelCode', Data::string($package, 'recordNumber'));
             $labels[] = new ShipmentLabel(Carrier::CzechPost, $trackingNumber, $labelPdf);
         }
 
@@ -213,7 +214,7 @@ class CzechPostShipmentHandler extends CzechPostApi implements ShipmentHandlerIn
     }
 
     /**
-     * @param array<string, mixed> $header
+     * @param array<mixed> $header
      * @return string[]
      */
     private function extractErrorDetails(array $header): array
@@ -236,7 +237,7 @@ class CzechPostShipmentHandler extends CzechPostApi implements ShipmentHandlerIn
                         continue;
                     }
 
-                    $context = (string) ($item['recordID'] ?? $item['recordNumber'] ?? $item['parcelCode'] ?? '');
+                    $context = self::recordContext($item);
                     $message = ErrorCodes::getErrorMsg((int) $stateResponse['responseCode']);
                     $details[] = $context !== '' ? $context . ': ' . $message : $message;
                 }
@@ -247,12 +248,27 @@ class CzechPostShipmentHandler extends CzechPostApi implements ShipmentHandlerIn
                 continue;
             }
 
-            $context = (string) ($item['recordID'] ?? $item['recordNumber'] ?? $item['parcelCode'] ?? '');
+            $context = self::recordContext($item);
             $message = ErrorCodes::getErrorMsg((int) $responseCode);
             $details[] = $context !== '' ? $context . ': ' . $message : $message;
         }
 
         return array_values(array_unique($details));
+    }
+
+    /**
+     * Označení balíku v chybové hlášce (recordID, jinak recordNumber, jinak parcelCode).
+     *
+     * @param array<mixed> $item
+     */
+    private static function recordContext(array $item): string
+    {
+        foreach (['recordID', 'recordNumber', 'parcelCode'] as $key) {
+            if (isset($item[$key])) {
+                return Data::string($item, $key);
+            }
+        }
+        return '';
     }
 
     private function resolveParcelShopZip(ShipmentRequest $request): string

@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace Ages\ShippingGateway\OneByAllegro;
 
 use Ages\ShippingGateway\Common\CarrierInterface;
+use Ages\ShippingGateway\Common\Data;
 use Ages\ShippingGateway\Common\ParcelTrackingInterface;
 use Ages\ShippingGateway\Common\ShippingException;
 use Ages\ShippingGateway\OneByAllegro\Config\OneByAllegroConfig;
-use Ages\ShippingGateway\OneByAllegro\Tracking\OneByAllegroParcelStatus;
-use Ages\ShippingGateway\OneByAllegro\Tracking\OneByAllegroParcelTracking;
+use Ages\ShippingGateway\OneByAllegro\Tracking\OneByAllegroTrackingMapper;
 use Ages\ShippingGateway\OneByAllegro\Values\LabelFormat;
 use Ages\ShippingGateway\OneByAllegro\Values\Method;
 use Ages\ShippingGateway\Common\Http\AccessToken;
@@ -60,13 +60,10 @@ class OneByAllegroApi implements CarrierInterface
         }
 
         $packageNumbers = [];
-        $packages = $data['packages'] ?? [];
-        if (is_array($packages)) {
-            foreach ($packages as $package) {
-                $number = is_array($package) ? ($package['packageNumber'] ?? null) : null;
-                if (is_string($number) || is_int($number)) {
-                    $packageNumbers[] = (string) $number;
-                }
+        foreach (Data::arrays($data, 'packages') as $package) {
+            $number = $package['packageNumber'] ?? null;
+            if (is_string($number) || is_int($number)) {
+                $packageNumbers[] = (string) $number;
             }
         }
 
@@ -107,17 +104,11 @@ class OneByAllegroApi implements CarrierInterface
         ]);
 
         $result = [];
-        $shipments = $data['shipments'] ?? [];
-        if (is_array($shipments)) {
-            foreach ($shipments as $shipment) {
-                if (!is_array($shipment)) {
-                    continue;
-                }
-                $id = $shipment['shipmentId'] ?? null;
-                $statuses = $shipment['statuses'] ?? [];
-                if ((is_string($id) || is_int($id)) && is_array($statuses)) {
-                    $result[(string) $id] = $statuses;
-                }
+        foreach (Data::arrays($data, 'shipments') as $shipment) {
+            $id = $shipment['shipmentId'] ?? null;
+            $statuses = $shipment['statuses'] ?? [];
+            if ((is_string($id) || is_int($id)) && is_array($statuses)) {
+                $result[(string) $id] = $statuses;
             }
         }
 
@@ -192,7 +183,7 @@ class OneByAllegroApi implements CarrierInterface
         $this->request('DELETE', Method::Pickups->value . '/' . rawurlencode($pickupId));
     }
 
-    public function getParcelTracking(string $consignmentId): ?ParcelTrackingInterface
+    public function getParcelTracking(string $consignmentId, ?\DateTimeInterface $createdAt = null): ?ParcelTrackingInterface
     {
         $statuses = $this->getTrackingStatuses([$consignmentId])[$consignmentId] ?? null;
         if ($statuses === null) {
@@ -200,20 +191,7 @@ class OneByAllegroApi implements CarrierInterface
         }
 
         [$country, $weight] = $this->shipmentCountryAndWeight($consignmentId);
-        $tracking = OneByAllegroParcelTracking::of($consignmentId, $country, $weight);
-
-        $entities = [];
-        foreach ($statuses as $status) {
-            if (is_array($status)) {
-                $entities[] = OneByAllegroParcelStatus::of($status);
-            }
-        }
-        usort($entities, static fn (OneByAllegroParcelStatus $a, OneByAllegroParcelStatus $b): int => $a->statusDate <=> $b->statusDate);
-        foreach ($entities as $entity) {
-            $tracking->addStatus($entity);
-        }
-
-        return $tracking;
+        return OneByAllegroTrackingMapper::tracking($consignmentId, $statuses, $country, $weight);
     }
 
     public function getTrackingUrl(string $consignmentId): string
@@ -252,21 +230,12 @@ class OneByAllegroApi implements CarrierInterface
             return ['', 0.0];
         }
 
-        $receiver = $detail['receiver'] ?? null;
-        $country = is_array($receiver) && is_string($receiver['countryCode'] ?? null) ? $receiver['countryCode'] : '';
-
         $weight = 0.0;
-        $packages = $detail['packages'] ?? [];
-        if (is_array($packages)) {
-            foreach ($packages as $package) {
-                $value = is_array($package) ? ($package['weight'] ?? null) : null;
-                if (is_numeric($value)) {
-                    $weight += (float) $value;
-                }
-            }
+        foreach (Data::arrays($detail, 'packages') as $package) {
+            $weight += Data::float($package, 'weight');
         }
 
-        return [$country, $weight];
+        return [Data::string($detail, ['receiver', 'countryCode']), $weight];
     }
 
     private function decodeLabel(string $body): string

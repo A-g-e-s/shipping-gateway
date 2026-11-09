@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Ages\ShippingGateway\PersonalCollection\Handler;
 
 use Ages\ShippingGateway\Common\Carrier;
+use Ages\ShippingGateway\Common\ParcelTrackingInterface;
 use Ages\ShippingGateway\Common\ShipmentHandlerInterface;
 use Ages\ShippingGateway\Common\Shipment\ShipmentLabel;
 use Ages\ShippingGateway\Common\Shipment\ShipmentRequest;
@@ -34,5 +35,18 @@ class PersonalCollectionShipmentHandler implements ShipmentHandlerInterface
             $labels[] = new ShipmentLabel(Carrier::PersonalCollection, $request->reference, $index === 0 ? $pdf : '');
         }
         return $labels;
+    }
+
+    /**
+     * Osobní odběr nemá tracking dopravce.
+     */
+    public function getParcelTracking(string $consignmentId, ?\DateTimeInterface $createdAt = null): ?ParcelTrackingInterface
+    {
+        return null;
+    }
+
+    public function getTrackingUrl(string $consignmentId): string
+    {
+        return '';
     }
 }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Ages\ShippingGateway\SupplierDelivery\Handler;
 
 use Ages\ShippingGateway\Common\Carrier;
+use Ages\ShippingGateway\Common\ParcelTrackingInterface;
 use Ages\ShippingGateway\Common\ShipmentHandlerInterface;
 use Ages\ShippingGateway\Common\Shipment\ShipmentLabel;
 use Ages\ShippingGateway\Common\Shipment\ShipmentRequest;
@@ -43,5 +44,18 @@ class SupplierDeliveryShipmentHandler implements ShipmentHandlerInterface
             $labels[] = new ShipmentLabel(Carrier::SupplierDelivery, $request->reference, $index === 0 ? $pdf : '');
         }
         return $labels;
+    }
+
+    /**
+     * Doručení dodavatelem nemá tracking dopravce.
+     */
+    public function getParcelTracking(string $consignmentId, ?\DateTimeInterface $createdAt = null): ?ParcelTrackingInterface
+    {
+        return null;
+    }
+
+    public function getTrackingUrl(string $consignmentId): string
+    {
+        return '';
     }
 }

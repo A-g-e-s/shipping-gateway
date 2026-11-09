@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Ages\ShippingGateway\Gls\Handler;
 
 use Ages\ShippingGateway\Common\Carrier;
+use Ages\ShippingGateway\Common\Data;
 use Ages\ShippingGateway\Common\ShipmentHandlerInterface;
 use Ages\ShippingGateway\Common\Shipment\ShipmentLabel;
 use Ages\ShippingGateway\Common\Shipment\ShipmentRequest;
@@ -46,24 +47,23 @@ class GlsShipmentHandler extends GlsApi implements ShipmentHandlerInterface
         );
 
         $data = $this->printLabels($entity);
-        if (!empty($data->PrintLabelsErrorList)) {
-            $errors = implode(', ', array_map(
-                fn($e) => sprintf('%s (%s)', $e->ErrorCode, $e->ErrorDescription),
-                $data->PrintLabelsErrorList,
-            ));
-            throw new UnexpectedValueException('GLS: ' . $errors);
+        $errors = Data::objects($data, 'PrintLabelsErrorList');
+        if ($errors !== []) {
+            throw new UnexpectedValueException('GLS: ' . self::formatErrors($errors));
         }
-        if (!isset($data->Labels) || !is_array($data->Labels) || $data->Labels === []) {
+        $bytes = array_filter(Data::array($data, 'Labels'), 'is_int');
+        if ($bytes === []) {
             throw new UnexpectedValueException('GLS: label data missing in PrintLabels response');
         }
-        if (!isset($data->PrintLabelsInfoList) || !is_array($data->PrintLabelsInfoList) || $data->PrintLabelsInfoList === []) {
+        $infoList = Data::objects($data, 'PrintLabelsInfoList');
+        if ($infoList === []) {
             throw new UnexpectedValueException('GLS: parcel info missing in PrintLabels response');
         }
 
-        $labelPdf = implode(array_map('chr', $data->Labels));
-        foreach ($data->PrintLabelsInfoList as $index => $info) {
-            $parcelNumber = $info->ParcelNumber ?? ($request->reference . '-' . ($index + 1));
-            $labels[] = new ShipmentLabel(Carrier::Gls, (string) $parcelNumber, $labelPdf);
+        $labelPdf = implode(array_map(chr(...), $bytes));
+        foreach ($infoList as $index => $info) {
+            $parcelNumber = Data::string($info, 'ParcelNumber', $request->reference . '-' . ($index + 1));
+            $labels[] = new ShipmentLabel(Carrier::Gls, $parcelNumber, $labelPdf);
         }
 
         return $labels;

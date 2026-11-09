@@ -5,8 +5,7 @@ namespace Ages\ShippingGateway\CzechPost;
 use Ages\ShippingGateway\Common\CarrierInterface;
 use Ages\ShippingGateway\Common\ParcelTrackingInterface;
 use Ages\ShippingGateway\CzechPost\Config\CzechPostConfig;
-use Ages\ShippingGateway\CzechPost\Entity\ParcelStatus;
-use Ages\ShippingGateway\CzechPost\Entity\ParcelTracking;
+use Ages\ShippingGateway\CzechPost\Tracking\CzechPostTrackingMapper;
 use Ages\ShippingGateway\CzechPost\Entity\Values\Method;
 use Ages\ShippingGateway\Common\Http\HttpClient;
 use Ages\ShippingGateway\Common\ShippingException;
@@ -116,9 +115,10 @@ class CzechPostApi implements CarrierInterface
 
     /**
      * @param string|array<mixed> $parcel_ids
+     * @return array<mixed>
      * @throws CzechPostException
      */
-    protected function parcelStatusesApi(string|array $parcel_ids, string $language = 'cz'): mixed
+    protected function parcelStatusesApi(string|array $parcel_ids, string $language = 'cz'): array
     {
         if (!is_array($parcel_ids)) {
             $parcel_ids = [$parcel_ids];
@@ -149,36 +149,16 @@ class CzechPostApi implements CarrierInterface
         ];
     }
 
-    public function getParcelTracking(string $consignmentId): ?ParcelTrackingInterface
+    /**
+     * Chyby API (i neplatný podpis) vrací null – tracking České pošty je jen informativní.
+     */
+    public function getParcelTracking(string $consignmentId, ?\DateTimeInterface $createdAt = null): ?ParcelTrackingInterface
     {
         try {
-            $res = $this->parcelStatusesApi($consignmentId);
-            if (
-                is_array($res)
-                && isset($res['detail'][0]['idParcel'], $res['detail'][0]['countryOfDestination'], $res['detail'][0]['weight'], $res['detail'][0]['parcelStatuses'])
-                && is_array($res['detail'][0]['parcelStatuses'])
-            ) {
-                $parcelTracking = ParcelTracking::of(
-                    $res['detail'][0]['countryOfDestination'],
-                    $res['detail'][0]['idParcel'],
-                    $res['detail'][0]['weight']
-                );
-                foreach (array_reverse($res['detail'][0]['parcelStatuses']) as $statusLine) {
-                    if (is_array($statusLine) && isset($statusLine['id'], $statusLine['date'], $statusLine['text'])) {
-                        $parcelTracking->addStatus(ParcelStatus::of(
-                            $statusLine['name'] ?? '',
-                            $statusLine['postCode'] ?? '',
-                            $statusLine['id'],
-                            $statusLine['date'],
-                            $statusLine['text'],
-                        ));
-                    }
-                }
-                return $parcelTracking;
-            }
+            return CzechPostTrackingMapper::tracking($this->parcelStatusesApi($consignmentId));
         } catch (\Exception) {
+            return null;
         }
-        return null;
     }
 
     public function getTrackingUrl(string $consignmentId): string

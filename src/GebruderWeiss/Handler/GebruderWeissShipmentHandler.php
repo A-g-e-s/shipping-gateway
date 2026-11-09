@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Ages\ShippingGateway\GebruderWeiss\Handler;
 
 use Ages\ShippingGateway\Common\Carrier;
+use Ages\ShippingGateway\Common\ImportHandlerInterface;
 use Ages\ShippingGateway\Common\ShipmentAlreadyExistsException;
 use Ages\ShippingGateway\Common\ShipmentHandlerInterface;
 use Ages\ShippingGateway\Common\ShippingException;
@@ -20,7 +21,7 @@ use Ages\ShippingGateway\GebruderWeiss\GebruderWeissApi;
 use Ages\ShippingGateway\GebruderWeiss\Label\GebruderWeissLabelGenerator;
 use GuzzleHttp\ClientInterface;
 
-class GebruderWeissShipmentHandler extends GebruderWeissApi implements ShipmentHandlerInterface
+class GebruderWeissShipmentHandler extends GebruderWeissApi implements ShipmentHandlerInterface, ImportHandlerInterface
 {
     private GebruderWeissLabelGenerator $labelGenerator;
 

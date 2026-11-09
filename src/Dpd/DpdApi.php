@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace Ages\ShippingGateway\Dpd;
 
 use Ages\ShippingGateway\Common\CarrierInterface;
+use Ages\ShippingGateway\Common\Data;
 use Ages\ShippingGateway\Common\ParcelTrackingInterface;
 use Ages\ShippingGateway\Common\ShippingException;
 use Ages\ShippingGateway\Dpd\Config\DpdConfig;
-use Ages\ShippingGateway\Dpd\Tracking\DpdParcelStatus;
-use Ages\ShippingGateway\Dpd\Tracking\DpdParcelTracking;
+use Ages\ShippingGateway\Dpd\Tracking\DpdTrackingMapper;
 use Ages\ShippingGateway\Dpd\Values\LabelFormat;
 use Ages\ShippingGateway\Dpd\Values\Method;
 use Ages\ShippingGateway\Common\Http\HttpClient;
@@ -128,56 +128,15 @@ class DpdApi implements CarrierInterface
         $this->request('DELETE', Method::PickupOrders->value . '/' . $pickupOrderId);
     }
 
-    public function getParcelTracking(string $consignmentId): ?ParcelTrackingInterface
+    public function getParcelTracking(string $consignmentId, ?\DateTimeInterface $createdAt = null): ?ParcelTrackingInterface
     {
         $result = $this->getTracking($consignmentId);
-        if ($result === null) {
-            return null;
-        }
-
-        $info = is_array($result['parcelInfo'] ?? null) ? $result['parcelInfo'] : [];
-        $country = self::dig($info, 'receiver', 'address', 'country', 'isoAlpha2');
-        $number = $info['parcelNumber'] ?? $consignmentId;
-        $tracking = DpdParcelTracking::of(
-            is_string($number) || is_int($number) ? (string) $number : $consignmentId,
-            is_string($country) ? $country : '',
-        );
-
-        $statuses = [];
-        $events = $result['parcelEvents'] ?? [];
-        if (is_array($events)) {
-            foreach ($events as $event) {
-                if (is_array($event)) {
-                    $statuses[] = DpdParcelStatus::of($event);
-                }
-            }
-        }
-        usort($statuses, static fn (DpdParcelStatus $a, DpdParcelStatus $b): int => $a->statusDate <=> $b->statusDate);
-        foreach ($statuses as $status) {
-            $tracking->addStatus($status);
-        }
-
-        return $tracking;
+        return $result !== null ? DpdTrackingMapper::tracking($consignmentId, $result) : null;
     }
 
     public function getTrackingUrl(string $consignmentId): string
     {
         return $this->config->trackingUrl . rawurlencode($consignmentId);
-    }
-
-    /**
-     * @param array<mixed> $data
-     */
-    private static function dig(array $data, string ...$keys): mixed
-    {
-        $value = $data;
-        foreach ($keys as $key) {
-            if (!is_array($value) || !array_key_exists($key, $value)) {
-                return null;
-            }
-            $value = $value[$key];
-        }
-        return $value;
     }
 
     private static function decodePdf(string $body): string
@@ -243,9 +202,8 @@ class DpdApi implements CarrierInterface
                 $text = is_string($error['message'] ?? null) ? $error['message'] : '';
                 if ($text === '' && is_array($error['unionErrors'] ?? null)) {
                     foreach ($error['unionErrors'] as $union) {
-                        $issues = self::dig(is_array($union) ? $union : [], 'issues');
-                        foreach (is_array($issues) ? $issues : [] as $issue) {
-                            if (is_array($issue) && is_string($issue['message'] ?? null)) {
+                        foreach (Data::arrays($union, 'issues') as $issue) {
+                            if (is_string($issue['message'] ?? null)) {
                                 $text .= ($text !== '' ? ', ' : '') . (is_string($issue['path'] ?? null) ? $issue['path'] . ' ' : '') . $issue['message'];
                             }
                         }

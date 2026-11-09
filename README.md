@@ -342,22 +342,48 @@ $trackingUrl = $gateway->trackingUrl(Carrier::GebruderWeiss, 'ORDER-2026-001');
 // GW public tracking deep-link needs pickupAddress.company in config.
 // PPL public tracking URL uses ?shipmentId={trackingNumber}.
 
-if ($tracking !== null) {
-    $tracking->getDelivered();           // bool
-    $tracking->getDeliveredDate();       // ?DateTimeImmutable
-    $tracking->getWeight();              // float (kg)
-    $tracking->getParcelNumber();        // string
-    $tracking->getDeliveryCountryCode(); // string (ISO)
+// Gebrüder Weiss hledá referenci v okně od data založení zásilky, ostatní dopravci třetí parametr ignorují
+$tracking = $gateway->tracking(Carrier::GebruderWeiss, 'ORDER-2026-001', $consignment->dateCreated);
 
-    foreach ($tracking->getParcelStatuses() as $status) {
-        $status->getStatusDate();        // ?DateTimeImmutable
-        $status->getStatusDescription(); // string
-        $status->getCustomInfo();        // ?string
-        $status->getDelivered();         // bool
-        $status->getDamaged();           // bool
+if ($tracking !== null) {               // Common\Tracking\ParcelTracking (ParcelTrackingInterface)
+    $tracking->delivered;               // bool
+    $tracking->deliveredDate;           // ?DateTimeImmutable
+    $tracking->damaged;                 // bool
+    $tracking->weight;                  // float (kg), 0.0 když ho dopravce nevrací
+    $tracking->parcelNumber;            // string
+    $tracking->deliveryCountryCode;     // string (ISO), '' když ho dopravce nevrací
+    $tracking->deliveryZipCode;         // ?string (GLS, PPL)
+    $tracking->clientReference;         // ?string (GLS, PPL)
+    $tracking->toArrayHash();           // Nette ArrayHash včetně stavů
+
+    foreach ($tracking->parcelStatuses as $status) { // Common\Tracking\ParcelStatus, od nejstaršího
+        $status->statusCode;            // string – kód dopravce
+        $status->statusDate;            // ?DateTimeImmutable
+        $status->statusDescription;     // string
+        $status->statusInfo;            // ?string (podpis, doplňující text)
+        $status->customInfo;            // ?string – náš popis (Doručeno, Poškozeno …)
+        $status->depotCity;             // ?string
+        $status->depotCode;             // ?string
+        $status->delivered;             // bool
+        $status->damaged;               // bool
     }
 }
 ```
+
+Pravidla doručení / poškození podle dopravce (`*TrackingMapper`):
+
+| Dopravce | Doručeno | Poškozeno |
+|---|---|---|
+| GLS | StatusCode 05, 58, 92 | 30, 31, 92 |
+| PPL | shipmentState `Delivered` (datum `deliveryFeature.delivDate`) nebo událost `Delivered` | – |
+| Česká pošta | stav `91` | – |
+| Gebrüder Weiss | popis `delivered` / `zugestellt` / `doručeno` nebo kód `*DSC*810` | myGwStatusCode `CRITICAL` |
+| One by Allegro | `DOR` | `USZ` (poškozená), `ZAG` (ztracená); `ZDN*` = vráceno odesílateli |
+| DPD | kód 13 / 23 nebo popis „doručen / delivered / zugestellt / vyzvednut“ | popis „poškozen / damaged / beschädigt“ |
+
+`deliveredDate` je u GLS, PPL a České pošty datum posledního doručeného stavu (`DeliveredDate::LastAdded`),
+u ostatních nejpozdější datum mezi doručenými stavy (`DeliveredDate::Latest`). Osobní odběr a doručení dodavatelem
+vrací `null` a `trackingUrl()` `''`.
 
 > `trackingUrl()` vrací veřejnou stránku sledování dopravce.  
 > U GLS a České pošty je URL předvyplněná číslem zásilky, u PPL a Gebrüder Weiss vede na jejich oficiální tracking stránku.
@@ -419,6 +445,29 @@ $dpd->getLabels(['13815045502659']);       // znovu stáhnout štítky (PDF)
 
 Balíček obsahuje API vrstvu (HTTP komunikace, entity, config) a unified shipment handlery.  
 Aplikační logika — mapování objednávky/faktury na zásilku, ukládání do DB — patří do projektu.
+
+### Přidání nového dopravce do balíčku
+
+1. **`Common\Carrier`** – nový case enumu a jeho typy balíků v `supportedParcelTypes()`.
+2. **`<Dopravce>/Config/<Dopravce>Config.php`** – readonly config (přístupy, `PickupAddress`, URL).
+3. **`<Dopravce>/<Dopravce>Api.php`** – HTTP komunikace přes `Common\Http\HttpClient` (konstruktor
+   `(Config $config, ?ClientInterface $httpClient = null)`, tokeny přes `TokenCache`, čtení odpovědí přes `Common\Data`).
+4. **`<Dopravce>/Tracking/<Dopravce>TrackingMapper.php`** – převod odpovědi trackingu na `Common\Tracking\ParcelTracking`
+   + `ParcelStatus` s pravidly dopravce pro `delivered` / `damaged` / `customInfo`. Vlastní tracking entity netvořit.
+5. **`<Dopravce>/Handler/<Dopravce>ShipmentHandler.php`** – implementuje `ShipmentHandlerInterface`
+   (`createShipment`, `getCarrier`, `getParcelTracking`, `getTrackingUrl`; dopravce bez trackingu vrací `null` / `''`).
+   Svoz od dodavatele navíc `ImportHandlerInterface`. Víc PDF štítků spojí `Common\Label\PdfMerger::merge()`.
+6. **`ShippingGateway`** – pojmenovaný parametr configu v konstruktoru (kvůli neonu) a jeden řádek registrace:
+
+   ```php
+   $c->register(Carrier::Novy, $novyConfig, 'NovyConfig',
+       static fn (NovyConfig $config, ?ClientInterface $http) => new NovyShipmentHandler($config, $http));
+   ```
+
+   `tracking()`, `trackingUrl()`, `createShipment()` a `createImport()` pak fungují bez dalších úprav;
+   `ShippingGatewayTest` ohlídá, že je každý case `Carrier` registrovaný.
+7. **Testy** v `tests/Carrier/<Dopravce>ShipmentTest.php` (`CarrierTestCase` + `MockHttp`): odeslané JSON tělo
+   při vytvoření zásilky, zpracování odpovědi na `ShipmentLabel[]` a tracking (pořadí stavů, delivered, damaged).
 
 ### GLS — příklad rozšíření
 
@@ -546,16 +595,26 @@ Testy (`tests/`) běží jen proti `GuzzleHttp\Handler\MockHandler`, ostrá API 
 
 ```
 src/
-├── ShippingGateway.php               ← facade: tracking() + createShipment()
+├── ShippingGateway.php               ← facade: tracking(), trackingUrl(), createShipment(), createImport();
+│                                       jediné místo registrace dopravců (Carrier → config → handler)
 ├── Common/
-│   ├── Carrier.php                   ← enum: Gls | Ppl | CzechPost | GebruderWeiss
-│   ├── CarrierInterface.php
-│   ├── ShipmentHandlerInterface.php  ← createShipment(ShipmentRequest): ShipmentLabel[]
+│   ├── Carrier.php                   ← enum: Gls | Ppl | CzechPost | GebruderWeiss | PersonalCollection | SupplierDelivery | OneByAllegro | Dpd
+│   ├── CarrierRegistry.php           ← mapa Carrier → handler, lazy vytvoření z configu, ConfigException bez configu
+│   ├── CarrierInterface.php          ← getParcelTracking(id, ?createdAt), getTrackingUrl(id)
+│   ├── ShipmentHandlerInterface.php  ← CarrierInterface + createShipment(ShipmentRequest): ShipmentLabel[], getCarrier()
+│   ├── ImportHandlerInterface.php    ← createImport(ImportRequest) – svoz od dodavatele (Gebrüder Weiss)
+│   ├── Data.php                      ← bezpečné čtení vnořených polí / stdClass z odpovědí (string, float, arrays, objects, date)
 │   ├── AddressFormatter.php          ← ulice/číslo domu, telefon v mezinárodním tvaru
 │   ├── ParcelTrackingInterface.php
 │   ├── ParcelStatusInterface.php
 │   ├── PickupAddress.php
 │   ├── ShippingException.php
+│   ├── Tracking/
+│   │   ├── ParcelTracking.php        ← společné sledování: addStatus() nastaví delivered / deliveredDate / damaged, toArrayHash()
+│   │   ├── ParcelStatus.php          ← společný stav (readonly)
+│   │   └── DeliveredDate.php         ← Latest | LastAdded – odkud se bere datum doručení
+│   ├── Label/
+│   │   └── PdfMerger.php             ← spojení více PDF štítků přes mPDF
 │   ├── Http/
 │   │   ├── HttpClient.php            ← společný obal nad Guzzle: base URL, hlavičky, timeouty, chyby, Bearer + retry po 401
 │   │   ├── HttpStatusException.php   ← HTTP ≥ 400, kód v getCode(), tělo v getResponseBody()
@@ -563,6 +622,7 @@ src/
 │   │   └── AccessToken.php
 │   └── Shipment/
 │       ├── ShipmentRequest.php       ← vstupní DTO
+│       ├── ImportRequest.php         ← svoz od dodavatele
 │       ├── ShipmentLabel.php         ← výstupní DTO (carrier, trackingNumber, labelPdf)
 │       ├── RecipientAddress.php      ← fromFullName() factory
 │       ├── Parcel.php                ← weight, type, dimensions
@@ -575,40 +635,52 @@ src/
 │   ├── Config/GlsConfig.php
 │   ├── GlsApi.php
 │   ├── Handler/GlsShipmentHandler.php
+│   ├── Tracking/GlsTrackingMapper.php     ← GetParcelStatuses → Common\Tracking (číselník Entity/Values/StatusCode)
 │   └── Entity/ Values/
 ├── Ppl/
 │   ├── Config/PplConfig.php
 │   ├── PplApi.php
-│   ├── Handler/PplShipmentHandler.php
+│   ├── Handler/PplShipmentHandler.php     ← produkt dle země / výdejního místa / dobírky, export s dobírkou po balících
+│   ├── Tracking/PplTrackingMapper.php
 │   └── Entity/ Values/
 ├── CzechPost/
 │   ├── Config/CzechPostConfig.php
 │   ├── CzechPostApi.php
 │   ├── CzechPostException.php
 │   ├── Handler/CzechPostShipmentHandler.php
+│   ├── Tracking/CzechPostTrackingMapper.php
 │   └── Entity/ Values/
-└── GebruderWeiss/
-    ├── Config/GebruderWeissConfig.php
-    ├── GebruderWeissApi.php
-    ├── Handler/GebruderWeissShipmentHandler.php
-    ├── Label/GebruderWeissLabelGenerator.php  ← mPDF etiketa 100×150 mm
-    └── Tracking/
-        ├── GbwParcelTracking.php
-        └── GbwParcelStatus.php
+├── GebruderWeiss/
+│   ├── Config/GebruderWeissConfig.php
+│   ├── GebruderWeissApi.php
+│   ├── Handler/GebruderWeissShipmentHandler.php  ← SSCC, export i import (ImportHandlerInterface)
+│   ├── Label/GebruderWeissLabelGenerator.php     ← mPDF etiketa 100×150 mm
+│   └── Tracking/GebruderWeissTrackingMapper.php
 ├── Dpd/
 │   ├── Config/DpdConfig.php
 │   ├── DpdApi.php                    ← x-api-key, shipments, labels, tracking (v2), me, pickup orders
 │   ├── Handler/DpdShipmentHandler.php
-│   ├── Tracking/
+│   ├── Tracking/DpdTrackingMapper.php
 │   └── Values/
-└── OneByAllegro/
-    ├── Config/OneByAllegroConfig.php
-    ├── OneByAllegroApi.php           ← auth token, shipments, labels, tracking, points, pickups
-    ├── AddressFormatter.php          ← ulice/číslo, telefon, jména dle validace API
-    ├── Handler/OneByAllegroShipmentHandler.php
-    ├── Tracking/
-    └── Values/
+├── OneByAllegro/
+│   ├── Config/OneByAllegroConfig.php
+│   ├── OneByAllegroApi.php           ← auth token, shipments, labels, tracking, points, pickups
+│   ├── AddressFormatter.php          ← ulice/číslo, telefon, jména dle validace API
+│   ├── Handler/OneByAllegroShipmentHandler.php
+│   ├── Tracking/OneByAllegroTrackingMapper.php
+│   └── Values/
+├── PersonalCollection/               ← osobní odběr: jen vlastní PDF štítek, bez trackingu
+└── SupplierDelivery/                 ← doručení dodavatelem: vlastní štítek, bez trackingu
+
+tests/
+├── MockHttp.php                      ← Guzzle nad MockHandler s historií požadavků
+├── ShippingGatewayTest.php           ← registr: všichni dopravci registrovaní, lazy handlery, wrap chyb
+├── Common/                           ← HttpClient, TokenCache, Data, ParcelTracking, PdfMerger
+└── Carrier/                          ← obsah požadavků a tracking každého dopravce (CarrierTestCase)
 ```
+
+Tracking jde u všech dopravců přes společné entity v `Common\Tracking`; dopravce má jen `*TrackingMapper`,
+který převede jeho odpověď a určí `delivered` / `damaged` / `customInfo` podle svého číselníku.
 
 **Co je v balíčku:** HTTP komunikace, entity, config, unified tracking, unified shipment creation.  
 **Co patří do projektu:** mapování Invoice → ShipmentRequest, ukládání zásilek do DB, Storage.
