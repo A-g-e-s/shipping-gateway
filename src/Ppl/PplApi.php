@@ -84,11 +84,14 @@ class PplApi implements CarrierInterface
         );
     }
 
-    public function createBatch(ParcelEntity $parcelEntity): string
+    /**
+     * Jedna dávka s jednou nebo více zásilkami.
+     */
+    public function createBatch(ParcelEntity $parcelEntity, ParcelEntity ...$moreEntities): string
     {
         try {
             $response = $this->httpClient->post($this->config->url . Method::ShipmentBatch->value, [
-                'json' => $parcelEntity->toArray(),
+                'json' => ParcelEntity::batch($parcelEntity, ...$moreEntities),
                 'headers' => [
                     'Authorization' => 'Bearer ' . $this->token,
                     'Accept' => 'application/json',
@@ -216,18 +219,23 @@ class PplApi implements CarrierInterface
                 throw new ShippingException('PPL: invalid batch status response');
             }
 
-            $item = $response->items[0];
-            $importState = $item->importState ?? null;
-
-            if ($importState === 'Complete') {
-                return $response;
+            // dávka může mít víc zásilek (export s dobírkou) – hotovo je, až jsou hotové všechny
+            $complete = true;
+            foreach ($response->items as $item) {
+                $importState = $item instanceof \stdClass ? ($item->importState ?? null) : null;
+                if ($importState === 'Error') {
+                    $detail = array_filter([
+                        is_scalar($item->errorCode ?? null) ? (string) $item->errorCode : null,
+                        is_scalar($item->errorMessage ?? null) ? (string) $item->errorMessage : null,
+                    ]);
+                    throw new ShippingException('PPL: batch processing failed for batch ' . $batchId . ($detail !== [] ? ': ' . implode(' ', $detail) : ''));
+                }
+                if ($importState !== 'Complete') {
+                    $complete = false;
+                }
             }
 
-            if ($importState === 'Error') {
-                throw new ShippingException('PPL: batch processing failed for batch ' . $batchId);
-            }
-
-            return null;
+            return $complete ? $response : null;
         } catch (ClientException $exception) {
             $body = (string)$exception->getResponse()->getBody();
             throw new ShippingException('PPL getStatus HTTP ' . $exception->getResponse()->getStatusCode() . ': ' . $body);

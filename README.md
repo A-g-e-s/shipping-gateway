@@ -271,6 +271,13 @@ $tracking = $gateway->tracking($label->carrier, $label->trackingNumber);
 > **Více balíků — GLS / PPL / Czech Post / DPD:** API vrátí jeden kombinovaný PDF soubor pro všechny balíky.  
 > Každý `ShipmentLabel` má svůj `trackingNumber`, `labelPdf` je u všech shodné (kombinovaný tisk).
 >
+> **PPL — produkt podle země a výdejního místa:** příjemce ve stejné zemi jako `pickupAddress` → tuzemský produkt
+> (`PRIV`/`PRID` na adresu, `SMAR`/`SMAD` na výdejní místo), jinak mezinárodní (`CONN`/`COND` na adresu,
+> `SMEU`/`SMED` na výdejní místo; druhý kód vždy s dobírkou). Produkty musí být aktivní ve smlouvě (`GET codelist/product`).
+> U exportu se adresy posílají bez diakritiky (CPL přijímá jen latinku). Export s dobírkou nesmí být vícekusová sada,
+> každý balík je proto samostatná zásilka (`referenceId` = `reference-1`, `-2` …) s poměrnou částí dobírky, zbytek po dělení
+> dostane poslední balík. Měna dobírky se bere z `CashOnDelivery::currency` (pro SK `EUR`), z variabilního symbolu se berou jen číslice.
+>
 > **Více balíků — One by Allegro:** jedna zásilka (`shipmentId`) s více balíky; každý `ShipmentLabel` nese `shipmentId`
 > (tracking i veřejné sledování jdou přes něj) a stejné PDF se štítky všech balíků. Pokud se zásilka vytvoří, ale štítek se
 > nepodaří stáhnout, výjimka obsahuje `shipmentId` – štítek lze dotáhnout přes `$gateway->oneByAllegro()->getLabels([$id])`.

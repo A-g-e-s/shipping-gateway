@@ -16,6 +16,7 @@ class AddressEntity extends AbstractEntity
     private ?string $contactName = null;
     private ?string $contactPhone = null;
     private ?string $contactEmail = null;
+    private bool $ascii = false;
 
     final private function __construct()
     {
@@ -45,23 +46,34 @@ class AddressEntity extends AbstractEntity
         return $entity;
     }
 
+    /**
+     * Texty bez diakritiky – CPL API podle dokumentace přijímá jen latinku bez diakritiky,
+     * u mezinárodních zásilek se proto adresy převádějí na ASCII.
+     */
+    public function withAscii(): static
+    {
+        $entity = clone $this;
+        $entity->ascii = true;
+        return $entity;
+    }
+
     public function toArray(): array
     {
         $e = [
-            'name' => self::sanitizeText($this->name),
-            'street' => self::sanitizeText($this->street),
-            'city' => self::sanitizeText($this->city),
+            'name' => $this->sanitizeText($this->name),
+            'street' => $this->sanitizeText($this->street),
+            'city' => $this->sanitizeText($this->city),
             'zipCode' => $this->zipCode,
             'country' => Strings::upper($this->countryIsoCode),
         ];
         if ($this->contactName !== null) {
-            $e['contact'] = self::sanitizeText($this->contactName);
+            $e['contact'] = $this->sanitizeText($this->contactName);
         }
         if ($this->contactPhone !== null) {
             $e['phone'] = $this->contactPhone;
         }
         if ($this->houseNumberInfo !== null) {
-            $e['name2'] = self::sanitizeText($this->houseNumberInfo);
+            $e['name2'] = $this->sanitizeText($this->houseNumberInfo);
         }
         if ($this->contactEmail !== null) {
             $e['email'] = $this->contactEmail;
@@ -69,11 +81,13 @@ class AddressEntity extends AbstractEntity
         return $e;
     }
 
-    private static function sanitizeText(string $value): string
+    private function sanitizeText(string $value): string
     {
         $sanitized = preg_replace('/[\x00-\x1F\x7F]+/u', ' ', $value) ?? $value;
         $sanitized = preg_replace('/\s+/', ' ', $sanitized) ?? $sanitized;
 
-        return trim($sanitized);
+        $sanitized = trim($sanitized);
+
+        return $this->ascii ? Strings::toAscii($sanitized) : $sanitized;
     }
 }
