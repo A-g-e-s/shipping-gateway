@@ -18,6 +18,8 @@ use Ages\ShippingGateway\Gls\Config\GlsConfig;
 use Ages\ShippingGateway\PersonalCollection\Config\PersonalCollectionConfig;
 use Ages\ShippingGateway\SupplierDelivery\Config\SupplierDeliveryConfig;
 use Ages\ShippingGateway\ShippingGateway;
+use Ages\ShippingGateway\Toptrans\Config\ToptransConfig;
+use Ages\ShippingGateway\Toptrans\Handler\ToptransShipmentHandler;
 use GuzzleHttp\Psr7\Response;
 use PHPUnit\Framework\TestCase;
 
@@ -76,6 +78,17 @@ final class ShippingGatewayTest extends TestCase
         $handler = $gateway->dpd();
         $gateway->setHttpClient(new MockHttp()->client);
         self::assertNotSame($handler, $gateway->dpd());
+    }
+
+    public function testToptransIsRegisteredWithDirectAccess(): void
+    {
+        $gateway = new ShippingGateway(toptransConfig: new ToptransConfig('user', 'secret'));
+
+        self::assertTrue($gateway->isConfigured(Carrier::Toptrans));
+        self::assertInstanceOf(ToptransShipmentHandler::class, $gateway->toptrans());
+        self::assertSame($gateway->toptrans(), $gateway->handler(Carrier::Toptrans));
+        self::assertSame(Carrier::Toptrans, Carrier::from('toptrans'));
+        self::assertStringEndsWith('?order_id=17720018911', $gateway->trackingUrl(Carrier::Toptrans, '17720018911'));
     }
 
     public function testErrorsAreWrappedInShippingException(): void

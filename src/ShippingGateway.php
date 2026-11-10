@@ -29,6 +29,8 @@ use Ages\ShippingGateway\Ppl\Config\PplConfig;
 use Ages\ShippingGateway\Ppl\Handler\PplShipmentHandler;
 use Ages\ShippingGateway\SupplierDelivery\Config\SupplierDeliveryConfig;
 use Ages\ShippingGateway\SupplierDelivery\Handler\SupplierDeliveryShipmentHandler;
+use Ages\ShippingGateway\Toptrans\Config\ToptransConfig;
+use Ages\ShippingGateway\Toptrans\Handler\ToptransShipmentHandler;
 use GuzzleHttp\ClientInterface;
 
 class ShippingGateway
@@ -48,6 +50,7 @@ class ShippingGateway
         ?SupplierDeliveryConfig   $supplierDeliveryConfig = null,
         ?OneByAllegroConfig       $oneByAllegroConfig = null,
         ?DpdConfig                $dpdConfig = null,
+        ?ToptransConfig           $toptransConfig = null,
     )
     {
         // Jediné místo registrace dopravců: Carrier → config → handler (vytvoří se až při prvním použití).
@@ -68,12 +71,14 @@ class ShippingGateway
             static fn (OneByAllegroConfig $config, ?ClientInterface $http) => new OneByAllegroShipmentHandler($config, $http));
         $c->register(Carrier::Dpd, $dpdConfig, 'DpdConfig',
             static fn (DpdConfig $config, ?ClientInterface $http) => new DpdShipmentHandler($config, $http));
+        $c->register(Carrier::Toptrans, $toptransConfig, 'ToptransConfig',
+            static fn (ToptransConfig $config, ?ClientInterface $http) => new ToptransShipmentHandler($config, $http));
     }
 
     /**
      * Vlastní Guzzle klient pro všechny dopravce (testy s MockHandler, proxy, logování).
      * Nastavit před prvním voláním dopravce – už vytvořené handlery se zahodí, ale reference na ně
-     * (oneByAllegro(), dpd()) si drží původního klienta.
+     * (oneByAllegro(), dpd(), toptrans()) si drží původního klienta.
      * Timeouty a http_errors nastavuje společná vrstva Common\Http\HttpClient u každého požadavku.
      */
     public function setHttpClient(?ClientInterface $httpClient): void
@@ -173,6 +178,17 @@ class ShippingGateway
     public function dpd(): DpdShipmentHandler
     {
         return $this->carriers->getAs(Carrier::Dpd, DpdShipmentHandler::class);
+    }
+
+    /**
+     * Přímý přístup k Toptrans API – výpočet ceny, archiv dávek, tisk dokumentů (zasilatelský příkaz, soupiska,
+     * štítky Zebra, POD), číselníky.
+     *
+     * @throws ConfigException
+     */
+    public function toptrans(): ToptransShipmentHandler
+    {
+        return $this->carriers->getAs(Carrier::Toptrans, ToptransShipmentHandler::class);
     }
 
     /**

@@ -1,6 +1,6 @@
 # ages/shipping-gateway
 
-Unified PHP library for shipping carrier integrations — **GLS**, **PPL**, **Czech Post**, **Gebrüder Weiss**, **One by Allegro**, **DPD**.  
+Unified PHP library for shipping carrier integrations — **GLS**, **PPL**, **Czech Post**, **Gebrüder Weiss**, **One by Allegro**, **DPD**, **Toptrans**.  
 Single entry point, config-driven credentials and pickup address, compatible with Nette + Nextras.
 
 ---
@@ -15,6 +15,7 @@ Single entry point, config-driven credentials and pickup address, compatible wit
 | Gebrüder Weiss | https://developer.my.gw-world.com/#/apis |
 | One by Allegro | https://api.onedelivery.tech/parcels/swagger.html |
 | DPD (GeoAPI) | https://geoapi.dpd.cz/v1/swagger/ (tracking https://geoapi.dpd.cz/v2/swagger/) |
+| Toptrans (ZP2) | https://zp.toptrans.cz/docs/api.html (entity objednávky https://zp.toptrans.cz/docs/data.html) |
 
 ---
 
@@ -134,6 +135,22 @@ services:
         # insureValue: true                # pojištění na ShipmentValue, výchozí vypnuto
     )
 
+    toptransConfig: Ages\ShippingGateway\Toptrans\Config\ToptransConfig(
+        username: USERNAME                 # stejné přihlášení jako do zákaznické aplikace zp.toptrans.cz (Basic auth)
+        password: PASSWORD
+        # pickupAddress: @pickupAddress    # nakládka jinde než na adrese objednavatele z registrace (loading_select=2)
+        # term: Ages\ShippingGateway\Toptrans\Values\Term::TopPrivat   # výchozí Standard
+        # packagePack: Ages\ShippingGateway\Toptrans\Values\PackType::Bag  # obal balíků, výchozí Parcel (BALIK)
+        # packDescription: 'Krmivo pro zvířata'
+        # labelFormat: Ages\ShippingGateway\Toptrans\Values\LabelFormat::Zebra   # výchozí A4 (arch 2 × 7), Zebra = 70 × 90 mm
+        # smsAdvice: false                 # SMS avizace příjemci, výchozí zapnuto
+        # phoneAdvice: true                # telefonická avizace řidičem, výchozí vypnuto
+        # declareValue: true               # posílat hodnotu zásilky (order_value), výchozí vypnuto
+        # codBankAccount: '19-2000145399/0800'   # účet pro dobírky, jinak účet z registrace u Toptransu
+        # codIban: 'SK31 1200 0000 1987 4263 7541'
+        # attachDocuments: true            # za štítky přidat zasilatelský příkaz a soupisku
+    )
+
     - Ages\ShippingGateway\ShippingGateway
 ```
 
@@ -144,6 +161,16 @@ services:
 > **DPD** zakládá zásilky typu `Standard` pod `customerDsw`. `parcelShopCode` = ID výdejního místa (např. `CZ10190`, služba `pickupPoint`),
 > dobírka se posílá v haléřích s platbou `CashOrCard` a variabilním symbolem (jen číslice, max 10). Firma jde do `name1`, osoba do `name2` a kontaktu.
 > Ulice a telefon se upravují stejně jako u One by Allegro. `senderAddressId` a DSW najdete přes `$gateway->dpd()->getMe()`.
+
+> **Toptrans** doručuje po **CZ a SK** (země se v API neuvádí, určí ji PSČ a obec) a vozí balíky, nadrozměrné zásilky i palety.
+> Jedna `ShipmentRequest` = jedna objednávka přepravy (přepravní list), každý `Parcel` je jeden kus s obalem:
+> `Package` → `packagePack` (výchozí BALIK), `PackageOversize` → totéž + příznak nadrozměru (`oversize`),
+> `PalletEur` → EPAL (a počet `num_epals`), `PalletHalf` → 1/2-PAL, `PalletOneWay` / `PalletCustom` → PALETA.
+> Rozměry kusů se posílají v cm, kubatura (`m3`) se spočítá, jen když mají rozměry všechny kusy.
+> `parcelShopCode` = ID střediska Toptransu → termín *Osobní odběr*. Dobírka v CZK/EUR s variabilním symbolem (jen číslice, max 20).
+> `createShipment()` objednávku uloží (`order/save`) a hned odešle (`order/send`) – **tím je přeprava závazně objednaná včetně
+> nakládky**, samostatný svoz se neobjednává. Když odeslání selže, neodeslaná objednávka se smaže.
+> API je jen produkční, testovací prostředí Toptrans nezveřejňuje.
 
 > **Certifikát České pošty** (`postsignum-bundle.pem`) je třeba umístit ručně do projektu.  
 > Cesta se nastavuje přes `certificatePath` — nikdy se nekopíruje do balíčku.
@@ -283,6 +310,10 @@ $tracking = $gateway->tracking($label->carrier, $label->trackingNumber);
 > (tracking i veřejné sledování jdou přes něj) a stejné PDF se štítky všech balíků. Pokud se zásilka vytvoří, ale štítek se
 > nepodaří stáhnout, výjimka obsahuje `shipmentId` – štítek lze dotáhnout přes `$gateway->oneByAllegro()->getLabels([$id])`.
 >
+> **Více balíků — Toptrans:** vrací **jeden** `ShipmentLabel` – `trackingNumber` je číslo přepravního listu (`orderNumber`,
+> dohledané v archivu dávek po odeslání), `labelPdf` obsahuje štítky všech kusů. Čísla jednotlivých kusů jsou v
+> `$gateway->toptrans()->archive()` (`item_numbers`).
+>
 > **Více balíků — Gebrüder Weiss:** každý balík dostane vlastní SSCC kód v etiketě a samostatné PDF etiket.  
 > `ShipmentLabel[]` má tolik prvků, kolik je zásilek — pro tracking mají všechny stejný `trackingNumber` (`reference` / `orderId`), `labelPdf` je u prvního prvku a SSCC zůstává součástí etikety.
 
@@ -333,6 +364,7 @@ $tracking = $gateway->tracking(Carrier::CzechPost, 'DR123456789CZ');
 $tracking = $gateway->tracking(Carrier::GebruderWeiss, 'ORDER-2026-001'); // reference zásilky / orderId
 $tracking = $gateway->tracking(Carrier::OneByAllegro, 'SHIP12345');         // shipmentId
 $tracking = $gateway->tracking(Carrier::Dpd, '13815045502659');             // číslo balíku (14 číslic)
+$tracking = $gateway->tracking(Carrier::Toptrans, '17720018911');            // číslo přepravního listu
 
 $trackingUrl = $gateway->trackingUrl(Carrier::Gls, '1234567890');
 $trackingUrl = $gateway->trackingUrl(Carrier::Ppl, 'KEA12345678');
@@ -476,6 +508,32 @@ $dpd->getLabels(['13815045502659']);       // znovu stáhnout štítky (PDF)
 
 > Tracking jde přes GeoAPI v2, `null` = DPD balík zatím nezná (HTTP 404). Doručení se pozná podle kódu `13` / `23`
 > nebo podle popisu („Doručeno“, „Delivered“) – GeoAPI číselník stavů nepublikuje. Váhu tracking nevrací (`weight` = 0).
+
+### Toptrans — cena, archiv a dokumenty
+
+```php
+use Ages\ShippingGateway\Toptrans\Values\Method;
+
+$toptrans = $gateway->toptrans();
+
+$toptrans->price([                          // výpočet ceny přepravy
+    'loading_address_city' => 'Praha', 'loading_address_zip' => '11000',
+    'discharge_address_city' => 'Brno', 'discharge_address_zip' => '60200',
+    'kg' => 120, 'num_epals' => 1,
+]);
+$batches = $toptrans->archive(new \DateTimeImmutable('today'));   // odeslané dávky: order_numbers, item_numbers …
+$toptrans->printBatch(Method::PrintList, $batches[0]['id']);      // zasilatelský příkaz (PDF)
+$toptrans->printBatch(Method::PrintZebraLabels, $batches[0]['id']); // štítky 70 × 90 mm
+$toptrans->printProofOfDelivery('17720018911');                    // potvrzení o doručení (POD)
+$toptrans->search(itemNumbers: ['6502033259']);                    // stav podle čísla kusu / označení
+$toptrans->register('pack');                                       // veřejné číselníky
+```
+
+> Tracking (`order/search`) vrací jen **aktuální stav** (text, např. „Na rozvozu“), datum nakládky a datum doručení –
+> historii událostí ani váhu Toptrans nedává. `ParcelTracking` má proto stav „Naloženo“ (datum nakládky) a aktuální stav;
+> doručeno = vyplněné `deliveryDate` nebo text „doručen…“. `clientReference` = označení (naše reference).
+> Veřejné sledování na toptrans.cz je formulář s reCAPTCHA – `trackingUrl()` vede na stránku sledování s `?order_id=`,
+> předvyplnění čísla není ověřené.
 
 ---
 
@@ -636,7 +694,7 @@ src/
 ├── ShippingGateway.php               ← facade: tracking(), trackingUrl(), createShipment(), createImport();
 │                                       jediné místo registrace dopravců (Carrier → config → handler)
 ├── Common/
-│   ├── Carrier.php                   ← enum: Gls | Ppl | CzechPost | GebruderWeiss | PersonalCollection | SupplierDelivery | OneByAllegro | Dpd
+│   ├── Carrier.php                   ← enum: Gls | Ppl | CzechPost | GebruderWeiss | PersonalCollection | SupplierDelivery | OneByAllegro | Dpd | Toptrans
 │   ├── CarrierRegistry.php           ← mapa Carrier → handler, lazy vytvoření z configu, ConfigException bez configu
 │   ├── CarrierInterface.php          ← getParcelTracking(id, ?createdAt), getTrackingUrl(id)
 │   ├── ShipmentHandlerInterface.php  ← CarrierInterface + createShipment(ShipmentRequest): ShipmentLabel[], getCarrier()
@@ -700,6 +758,12 @@ src/
 │   ├── Handler/DpdShipmentHandler.php
 │   ├── Tracking/DpdTrackingMapper.php
 │   └── Values/
+├── Toptrans/
+│   ├── Config/ToptransConfig.php
+│   ├── ToptransApi.php               ← Basic auth, obálka {status, data, errors}, save/send/delete, archiv, tisk PDF, search
+│   ├── Handler/ToptransShipmentHandler.php  ← objednávka = přepravní list, kusy s obaly, save → send → štítky → orderNumber
+│   ├── Tracking/ToptransTrackingMapper.php  ← aktuální stav z order/search
+│   └── Values/                       ← Method, Term, PackType, LabelFormat, Currency
 ├── OneByAllegro/
 │   ├── Config/OneByAllegroConfig.php
 │   ├── OneByAllegroApi.php           ← auth token, shipments, labels, tracking, points, pickups
