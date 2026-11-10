@@ -421,6 +421,44 @@ $detail = $api->getShipment($shipmentId);  // ShipmentDetailResponse
 
 > Stavy zásilky: `DOR` = doručeno, `USZ` / `ZAG` = poškozeno / ztraceno (`damaged`). Číselník: https://api.onedelivery.tech/parcels/statuses.csv
 
+#### Widget výdejních míst (One Point / One Box)
+
+Mapový widget (https://onedelivery.cz/integrace/widget) nepotřebuje API klíč ani konfiguraci – `OneWidget` jen sestaví adresu.
+Widget bere místa ze stejného `/parcels/points` jako `getPoints()`, vrácené `selectedID` je tedy rovnou `pointId`
+pro `ShipmentRequest::$parcelShopCode`.
+
+```php
+use Ages\ShippingGateway\OneByAllegro\Widget\OneWidget;
+use Ages\ShippingGateway\OneByAllegro\Widget\WidgetPointType;
+
+// iframe v objednávce – výsledek přijde přes postMessage
+$src = OneWidget::iframeUrl(
+    fixedType: WidgetPointType::Box,   // jen boxy (Point = jen výdejní místa), null = zákazník volí sám
+    country: 'sk',                     // cz / sk – např. podle země doručení
+    disableBoxTypes: ['alzabox'],      // oxbox, alzabox, onebox
+    disablePointTypes: [],             // sazka
+    cancelMessage: true,               // zavírací tlačítko pošle {"widgetClosed": true}
+);
+
+// přesměrování – widget přilepí ID místa na konec selectTarget
+$url = OneWidget::redirectUrl(
+    selectTarget: 'https://www.example.cz/kosik/doprava?pointId=',
+    cancelUrl: 'https://www.example.cz/kosik/doprava',
+);
+```
+
+```html
+<iframe src="{$src}" width="100%" height="700"></iframe>
+<script>
+window.addEventListener('message', (e) => {
+    if (e.origin !== 'https://widget.wedo.cz') return;   // OneWidget::Origin
+    if (e.data.widgetClosed) { /* zákazník widget zavřel */ return; }
+    // e.data.selectedID   → pointId (ShipmentRequest::$parcelShopCode)
+    // e.data.selectedName → název místa pro zobrazení v košíku
+});
+</script>
+```
+
 ### DPD — svozy a nastavení účtu
 
 ```php
@@ -668,6 +706,7 @@ src/
 │   ├── AddressFormatter.php          ← ulice/číslo, telefon, jména dle validace API
 │   ├── Handler/OneByAllegroShipmentHandler.php
 │   ├── Tracking/OneByAllegroTrackingMapper.php
+│   ├── Widget/OneWidget.php          ← URL mapového widgetu výdejních míst (iframe / přesměrování)
 │   └── Values/
 ├── PersonalCollection/               ← osobní odběr: jen vlastní PDF štítek, bez trackingu
 └── SupplierDelivery/                 ← doručení dodavatelem: vlastní štítek, bez trackingu
