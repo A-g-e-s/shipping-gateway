@@ -29,7 +29,8 @@ readonly class ToptransConfig
      * @param bool $declareValue posílat hodnotu zásilky (order_value) – podle smlouvy může jít o zpoplatněné připojištění
      * @param string|null $codBankAccount účet pro dobírky ve tvaru „19-2000145399/0800“; null = účet z registrace
      * @param string|null $codIban IBAN pro dobírky (hlavně EUR na Slovensko)
-     * @param bool $attachDocuments k PDF se štítky přidat zasilatelský příkaz a soupisku z order/send
+     * @param LabelFormat $labelFormat Thermal100x150 (výchozí, termotiskárna), A4 (arch 2 × 7), Zebra (70 × 90 mm)
+     * @param bool $attachDocuments jen u A4: k PDF se štítky přidat zasilatelský příkaz a soupisku z order/send
      * @param string $trackingUrl veřejná stránka sledování, doplní se číslo přepravního listu
      */
     public function __construct(
@@ -40,7 +41,7 @@ readonly class ToptransConfig
         public Term           $term = Term::Standard,
         public PackType       $packagePack = PackType::Parcel,
         public ?string        $packDescription = null,
-        public LabelFormat    $labelFormat = LabelFormat::A4,
+        public LabelFormat    $labelFormat = LabelFormat::Thermal100x150,
         public bool           $smsAdvice = true,
         public bool           $phoneAdvice = false,
         public bool           $declareValue = false,

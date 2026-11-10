@@ -12,6 +12,7 @@ use Ages\ShippingGateway\Common\Shipment\ParcelType;
 use Ages\ShippingGateway\Common\ShippingException;
 use Ages\ShippingGateway\Common\Tracking\ParcelTracking;
 use Ages\ShippingGateway\Tests\MockHttp;
+use Ages\ShippingGateway\Tests\PdfPages;
 use Ages\ShippingGateway\Toptrans\Config\ToptransConfig;
 use Ages\ShippingGateway\Toptrans\Handler\ToptransShipmentHandler;
 use Ages\ShippingGateway\Toptrans\Values\LabelFormat;
@@ -27,7 +28,7 @@ final class ToptransShipmentTest extends CarrierTestCase
 
     private static function handler(MockHttp $mock, ?ToptransConfig $config = null): ToptransShipmentHandler
     {
-        return new ToptransShipmentHandler($config ?? new ToptransConfig('user', 'secret'), $mock->client);
+        return new ToptransShipmentHandler($config ?? new ToptransConfig('user', 'secret', labelFormat: LabelFormat::A4), $mock->client);
     }
 
     private static function ok(mixed $data): Response
@@ -61,7 +62,7 @@ final class ToptransShipmentTest extends CarrierTestCase
     {
         $mock = new MockHttp([self::ok(['id' => self::OrderId]), self::sent(), self::archive()]);
 
-        $labels = self::handler($mock, new ToptransConfig('user', 'secret', codBankAccount: '19-2000145399/0800'))->createShipment(self::request(
+        $labels = self::handler($mock, new ToptransConfig('user', 'secret', labelFormat: LabelFormat::A4, codBankAccount: '19-2000145399/0800'))->createShipment(self::request(
             parcels: [new Parcel(12.5, dimensions: new Dimensions(60, 40, 30)), new Parcel(8.25, ParcelType::PackageOversize, new Dimensions(120, 50, 50), 'KRMIVO-2')],
             cod: 1234.567,
         ));
@@ -172,6 +173,44 @@ final class ToptransShipmentTest extends CarrierTestCase
         self::assertSame(['id' => self::BatchId], self::body($mock, 2));
         self::assertSame(self::Pdf, $labels[0]->labelPdf);
         self::assertSame(self::OrderNumber, $labels[0]->trackingNumber);
+    }
+
+    public function testDefaultThermalLabelPutsEachZebraLabelOnOwnPage100x150WithoutDocuments(): void
+    {
+        $zebra = PdfPages::create([[70, 90], [70, 90]]);
+        $mock = new MockHttp([
+            self::ok(['id' => self::OrderId]),
+            self::sent(),
+            new Response(200, ['Content-Type' => 'application/pdf'], $zebra),
+            self::archive(),
+        ]);
+
+        $labels = self::handler($mock, new ToptransConfig('user', 'secret', attachDocuments: true))
+            ->createShipment(self::request(parcels: [new Parcel(5), new Parcel(6)]));
+
+        self::assertSame(LabelFormat::Thermal100x150, new ToptransConfig('u', 'p')->labelFormat);
+        self::assertSame(4, $mock->count());
+        self::assertSame('https://zp.toptrans.cz/api/json/order/print-zebra-labels/', (string) $mock->request(2)->getUri());
+        self::assertSame(['id' => self::BatchId], self::body($mock, 2));
+        // dva kusy = dvě stránky 100 × 150, zasilatelský příkaz ani soupiska se nepřidávají
+        self::assertSame([[100.0, 150.0], [100.0, 150.0]], PdfPages::sizes($labels[0]->labelPdf));
+        self::assertSame(self::OrderNumber, $labels[0]->trackingNumber);
+    }
+
+    public function testOrderDocumentsAreAvailableSeparately(): void
+    {
+        $mock = new MockHttp([
+            self::archive(),
+            new Response(200, ['Content-Type' => 'application/pdf'], '%PDF-1.4 prikaz'),
+            new Response(200, ['Content-Type' => 'application/pdf'], '%PDF-1.4 soupiska'),
+        ]);
+
+        $documents = self::handler($mock)->printOrderDocuments(self::OrderNumber);
+
+        self::assertSame(['list' => '%PDF-1.4 prikaz', 'roll' => '%PDF-1.4 soupiska'], $documents);
+        self::assertSame('https://zp.toptrans.cz/api/json/order/print-list/', (string) $mock->request(1)->getUri());
+        self::assertSame('https://zp.toptrans.cz/api/json/order/print-roll/', (string) $mock->request(2)->getUri());
+        self::assertSame(['id' => self::BatchId], self::body($mock, 2));
     }
 
     public function testSaveErrorIsReportedWithMessages(): void

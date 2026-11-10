@@ -142,13 +142,13 @@ services:
         # term: Ages\ShippingGateway\Toptrans\Values\Term::TopPrivat   # výchozí Standard
         # packagePack: Ages\ShippingGateway\Toptrans\Values\PackType::Bag  # obal balíků, výchozí Parcel (BALIK)
         # packDescription: 'Krmivo pro zvířata'
-        # labelFormat: Ages\ShippingGateway\Toptrans\Values\LabelFormat::Zebra   # výchozí A4 (arch 2 × 7), Zebra = 70 × 90 mm
+        # labelFormat: Ages\ShippingGateway\Toptrans\Values\LabelFormat::A4   # výchozí Thermal100x150 (termoštítek), A4 = arch 2 × 7, Zebra = 70 × 90 mm
         # smsAdvice: false                 # SMS avizace příjemci, výchozí zapnuto
         # phoneAdvice: true                # telefonická avizace řidičem, výchozí vypnuto
         # declareValue: true               # posílat hodnotu zásilky (order_value), výchozí vypnuto
         # codBankAccount: '19-2000145399/0800'   # účet pro dobírky, jinak účet z registrace u Toptransu
         # codIban: 'SK31 1200 0000 1987 4263 7541'
-        # attachDocuments: true            # za štítky přidat zasilatelský příkaz a soupisku
+        # attachDocuments: true            # jen u A4: za štítky přidat zasilatelský příkaz a soupisku
     )
 
     - Ages\ShippingGateway\ShippingGateway
@@ -171,6 +171,11 @@ services:
 > `createShipment()` objednávku uloží (`order/save`) a hned odešle (`order/send`) – **tím je přeprava závazně objednaná včetně
 > nakládky**, samostatný svoz se neobjednává. Když odeslání selže, neodeslaná objednávka se smaže.
 > API je jen produkční, testovací prostředí Toptrans nezveřejňuje.
+>
+> **Štítky Toptrans:** API nabízí jen arch A4 (2 × 7 štítků) a PDF pro Zebru 70 × 90 mm (žádné 100 × 150 ani ZPL).
+> Výchozí `LabelFormat::Thermal100x150` stáhne štítky Zebra a přes `Common\Label\PdfPageFitter` dá každý kus 1:1 na vlastní
+> stránku 100 × 150 mm (vycentrovaný) – PDF jde na termotiskárnu stejně jako u ostatních dopravců. Zasilatelský příkaz a soupiska
+> (A4) se k termoštítkům nepřidávají, stáhnou se zvlášť přes `$gateway->toptrans()->printOrderDocuments($orderNumber)`.
 
 > **Certifikát České pošty** (`postsignum-bundle.pem`) je třeba umístit ručně do projektu.  
 > Cesta se nastavuje přes `certificatePath` — nikdy se nekopíruje do balíčku.
@@ -522,6 +527,8 @@ $toptrans->price([                          // výpočet ceny přepravy
     'kg' => 120, 'num_epals' => 1,
 ]);
 $batches = $toptrans->archive(new \DateTimeImmutable('today'));   // odeslané dávky: order_numbers, item_numbers …
+$docs = $toptrans->printOrderDocuments('17720018911');           // ['list' => zasilatelský příkaz, 'roll' => soupiska] (PDF A4)
+$toptrans->findBatch('17720018911');                              // dávka s přepravním listem (archiv včera–dnes)
 $toptrans->printBatch(Method::PrintList, $batches[0]['id']);      // zasilatelský příkaz (PDF)
 $toptrans->printBatch(Method::PrintZebraLabels, $batches[0]['id']); // štítky 70 × 90 mm
 $toptrans->printProofOfDelivery('17720018911');                    // potvrzení o doručení (POD)
@@ -710,7 +717,9 @@ src/
 │   │   ├── ParcelStatus.php          ← společný stav (readonly)
 │   │   └── DeliveredDate.php         ← Latest | LastAdded – odkud se bere datum doručení
 │   ├── Label/
-│   │   └── PdfMerger.php             ← spojení více PDF štítků přes mPDF
+│   │   ├── PdfMerger.php             ← spojení více PDF štítků přes mPDF
+│   │   ├── PdfPageFitter.php         ← stránky PDF 1:1 na vlastní stránky pevné velikosti (termoštítek 100 × 150 mm)
+│   │   └── PdfOutput.php             ← binární výstup mPDF
 │   ├── Http/
 │   │   ├── HttpClient.php            ← společný obal nad Guzzle: base URL, hlavičky, timeouty, chyby, Bearer + retry po 401
 │   │   ├── HttpStatusException.php   ← HTTP ≥ 400, kód v getCode(), tělo v getResponseBody()
@@ -761,7 +770,7 @@ src/
 ├── Toptrans/
 │   ├── Config/ToptransConfig.php
 │   ├── ToptransApi.php               ← Basic auth, obálka {status, data, errors}, save/send/delete, archiv, tisk PDF, search
-│   ├── Handler/ToptransShipmentHandler.php  ← objednávka = přepravní list, kusy s obaly, save → send → štítky → orderNumber
+│   ├── Handler/ToptransShipmentHandler.php  ← objednávka = přepravní list, kusy s obaly, save → send → štítky (výchozí 100 × 150) → orderNumber
 │   ├── Tracking/ToptransTrackingMapper.php  ← aktuální stav z order/search
 │   └── Values/                       ← Method, Term, PackType, LabelFormat, Currency
 ├── OneByAllegro/

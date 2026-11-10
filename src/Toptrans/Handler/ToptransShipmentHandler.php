@@ -8,6 +8,7 @@ use Ages\ShippingGateway\Common\AddressFormatter;
 use Ages\ShippingGateway\Common\Carrier;
 use Ages\ShippingGateway\Common\Data;
 use Ages\ShippingGateway\Common\Label\PdfMerger;
+use Ages\ShippingGateway\Common\Label\PdfPageFitter;
 use Ages\ShippingGateway\Common\PickupAddress;
 use Ages\ShippingGateway\Common\Shipment\Parcel;
 use Ages\ShippingGateway\Common\Shipment\ParcelType;
@@ -331,8 +332,10 @@ class ToptransShipmentHandler extends ToptransApi implements ShipmentHandlerInte
         $labels = match ($this->config->labelFormat) {
             LabelFormat::A4 => self::sentFile($sent, self::LabelFile) ?? $this->printBatch(Method::PrintLabels, $batchId),
             LabelFormat::Zebra => $this->printBatch(Method::PrintZebraLabels, $batchId),
+            LabelFormat::Thermal100x150 => PdfPageFitter::fit([$this->printBatch(Method::PrintZebraLabels, $batchId)]),
         };
-        if (!$this->config->attachDocuments) {
+        // zasilatelský příkaz a soupiska jsou A4 – na termoštítek se nehodí, jdou přes printOrderDocuments()
+        if (!$this->config->attachDocuments || $this->config->labelFormat !== LabelFormat::A4) {
             return $labels;
         }
 

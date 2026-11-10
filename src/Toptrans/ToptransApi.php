@@ -147,6 +147,43 @@ class ToptransApi implements CarrierInterface
     }
 
     /**
+     * Odeslaná dávka, ve které je přepravní list (z archivu; výchozí období včera–dnes).
+     *
+     * @return array<mixed>|null dávka (id, order_ids, order_numbers, item_numbers …)
+     */
+    public function findBatch(string $orderNumber, ?\DateTimeInterface $dateFrom = null, ?\DateTimeInterface $dateTo = null): ?array
+    {
+        $today = new \DateTimeImmutable('today', new \DateTimeZone('Europe/Prague'));
+        foreach ($this->archive($dateFrom ?? $today->modify('-1 day'), $dateTo ?? $today) as $batch) {
+            $numbers = array_map(static fn (mixed $n): string => is_scalar($n) ? (string) $n : '', Data::array($batch, 'order_numbers'));
+            if (in_array(trim($orderNumber), $numbers, true)) {
+                return $batch;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Zasilatelský příkaz a soupiska (PDF A4) dávky s přepravním listem – k termoštítkům se nepřikládají.
+     *
+     * @return array{list: string, roll: string}
+     * @throws ShippingException přepravní list v archivu za dané období není
+     */
+    public function printOrderDocuments(string $orderNumber, ?\DateTimeInterface $dateFrom = null, ?\DateTimeInterface $dateTo = null): array
+    {
+        $batchId = (int) Data::float($this->findBatch($orderNumber, $dateFrom, $dateTo), 'id');
+        if ($batchId <= 0) {
+            throw new ShippingException('Toptrans: order ' . $orderNumber . ' not found in order/archive');
+        }
+
+        return [
+            'list' => $this->printBatch(Method::PrintList, $batchId),
+            'roll' => $this->printBatch(Method::PrintRoll, $batchId),
+        ];
+    }
+
+    /**
      * Potvrzení o doručení (POD) podle čísla přepravního listu.
      */
     public function printProofOfDelivery(string $orderNumber): string
